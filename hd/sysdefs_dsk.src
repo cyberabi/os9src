@@ -1,0 +1,15 @@
+*
+* The following has been commented out since it is not relevant to the
+* Electra SFC controller.
+*
+*DiskType set G28
+DPort set $E014
+
+Drive set 0 start assembly with drive #0
+DriveCnt set 8 drives max on system
+Densy set 1 MFM or FM
+Sides set 2 single or double
+StpRat set 0 slowest
+IntrLeav set 3
+DrvSiz set 535
+Density set Densy+0 single track density

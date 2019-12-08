@@ -1,0 +1,35 @@
+ ttl Descriptor Module
+ page
+*************************
+*
+*  Drive Descriptor Module
+*
+*
+
+          ifp1
+          use       defsfile
+          endc
+Type set DEVIC+OBJCT
+Revs set REENT+1
+ mod DescEnd,DescName,Type,Revs,DscMgr,DscDrv
+ fcb DIR.+SHARE.+PREAD.+PWRIT.+UPDAT.+EXEC.+PEXEC.
+ fcb $F
+ fdb $E3C0 port address
+ fcb DescName-*-1 Bytes of options
+ fcb DT.RBF,0 Rbf device and drive no.
+ fcb $00 for Olivetti drive, $01 for CMI drives, $02 for Syquest drives
+ fcb $80 hard disk, standard os9 format
+ fcb $00 density not relevent for hard disk
+ fdb 180 cylinders on Olivetti drive, 306 for CMI drives
+ fcb 4 for Olivetti Drives and 12M CMI drives, 6 for 19M CMI drives
+ fcb 0 Verify turned on
+ fdb 32 sectors/track for most drives
+ fdb 32 sectors/track 0 for most drives
+ fcb 5 Sector interleave offset
+ fcb 8 Sector allocation size
+DescName fcs "H0"
+DscMgr fcs "RBF"
+DscDrv fcs "DBI"
+ emod
+DescEnd equ *
+

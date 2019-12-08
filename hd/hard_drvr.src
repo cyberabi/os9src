@@ -1,0 +1,404 @@
+ nam Elektra DBI driver source code
+ ttl Driver Module
+
+ opt -c
+ use defsfile
+
+*
+*       Os-9 Elektra DBI Hard Disk Driver Module Source Code
+*
+*        Software For Elektra DBI Hard Disk Controller
+*
+*                       Implemented By
+*                     A. Benjamin Teifeld
+*
+
+***************************************************************
+*
+* Disk Driver Module Header
+*
+*
+ mod DSKEND,DSKNAM,DRIVR+OBJCT,REENT+1,DSKENT,DSKSTA
+ fcb DIR.+SHARE.+PREAD.+PWRIT.+UPDAT.+EXEC.+PEXEC.
+DSKNAM fcs "DBI"
+
+ fcb 1 Edition telltale byte
+*******************
+* Revision History
+*
+* ed. 1: First release
+*
+*******************
+
+ pag
+*********************************************************************
+*
+* Static Storage
+*
+DriveCnt  set       2
+ org DRVBEG
+ rmb DRVMEM*DriveCnt
+CURTBL rmb 2 Ptr to current drive tbl
+CURDRV rmb 1 Drive select bit pattern
+V.BUF rmb 2 Driver resident buffer addr
+V.FDC rmb 6 Save area for XEBEC error status
+V.FREZ rmb 1 freeze flag that prevents reading sector 0 into DD. variables
+cmdbuf rmb 6 command
+cyls rmb 2 number of cylinders
+heads rmb 1 number of heads/drive
+reduce rmb 2 reduced write current cylinder
+precom rmb 2 write precompensation cylinder
+eccbst rmb 2 ECC data burst length
+DSKSTA equ . Total static requirement
+ pag
+
+
+
+******************************************************************
+*
+* Branch Table
+*
+DSKENT lbra INIDSK Initialize i/o
+ lbra READSK Read sector
+ lbra WRTDSK Write sector
+ lbra GETSTA Get status call
+ lbra PUTSTA Put status call
+ lbra TERMNT Terminate use of device
+
+
+
+*
+* XEBEC Commands
+*
+F.REST equ $01 Restore command
+F.READ equ $08 Read sector command
+F.WRIT equ $0A Write sector command
+F.WRTR equ $06 Write track command
+F.REQsns equ $03 request sense status command
+F.WRTdrv equ $04 write drive (format drive) command
+F.INIT equ $0C
+ pag
+************************************************************
+*
+* Put Status Call
+*
+*
+*
+PUTSTA ldx PD.RGS,Y Point to parameters
+ ldb R$B,X Get stat call
+ cmpb #SS.Reset Restore call?
+ beq retok ..yes; do it. (but really don't do it since it doesn't really matter [7/8/84])
+ cmpb #SS.WTrk Write track call?
+ lbeq WRTTRK ..yes; do it.
+ cmpb #SS.FRZ freeze DD. info?
+ beq setfrz
+GETSTA comb ...NO; Error
+ ldb #E$UnkSvc Error code
+ rts
+
+setfrz ldb #$FF
+          stb       V.FREZ,u
+retok     clrb
+          rts
+****************************************************************
+*
+* Initialize The I/O Port
+*
+*  Input: (U)= Pointer To Global Storage
+*
+*  On Exit: (A) Destroyed
+*           (X) Destroyed
+*           (Y) Destroyed
+*           (U) Unchanged
+*
+INIDSK ldx V.PORT,U Point to i/o port
+          lda       #$80      get reset code for DBI
+          sta       0,x       store it in the DBI control register
+ lda #$FF
+ ldb #DriveCnt
+ stb V.NDRV,U Inz number of drives
+ leax DRVBEG,U Point to first drive table
+INILUP sta DD.TOT+2,X Inz to non-zero
+ sta V.TRAK,X Inz to high track count
+ leax DRVMEM,X Point to next table
+ decb DONE?
+ bne INILUP ...no; inz more.
+ ldd #256 'd' passes memory req size
+ pshs U
+ OS9 F$SRqMem Request 1 page of memory
+ tfr U,X
+ puls U
+ bcs RETRN1
+ stx V.BUF,U Save it for use
+          ldx       V.PORT,u
+          lda       1,x       read data register to clear any pending interrupt
+          tfr       x,d       passes polling address
+ leax FLPTBL,PCR X passes pointer to flip mask table
+ leay REQSVC,PCR Y passes service routine address
+ OS9 F$IRQ Put me on poll list
+ bcs RETRN1 Oops no good!
+ clrb
+RETRN1 rts
+
+
+FLPTBL fcb 0 Flip no bits
+ fcb %10000000 Test bit-7 for intrpt
+ fcb 1 low priority
+
+ pag
+*********************************************************
+*
+* Restore Drive To Track Zero
+*
+*  Input: (Y)= Pointer To Path Descriptor
+*         (U)= Pointer To Global Storage
+*
+*  If Error: (B)= Error Code & Carry Is Set
+*
+*
+RESTOR lbsr drvinit setup drive parameters
+ lda #F.REST Restore command
+          sta       cmdbuf,u
+ lbra comrw
+ pag
+***************************************************************
+*
+* Read and Write Sector Commands
+*
+* Input:
+*   B = Msb Of Logical Sector Number
+*   X = Lsb'S Of Logical Sector Number
+*   Y = Ptr To Path Descriptor
+*   U = Ptr To Global Storage
+*
+*
+* Error:
+*   Carry Set
+*   B = Error Code
+*
+READSK lda #F.READ
+          cmpx      #0        logical sector 0?
+          bne       cont      not at this point, it isn't
+          tstb                what about the msb?
+          lbeq      READ0     if it's zero, then we need to get sector 0 in a special way
+cont      bra       comrw
+WRTDSK    lda       #F.WRIT
+comrw     lbsr      drvinit   setup for the kind of drive we've got
+          sta       cmdbuf,u  save the command
+          orb       CURDRV,u            or in the drive select bits
+          andb      #%00111111          make sure only proper bits are setup
+          stb       cmdbuf+1,u          save out high address and drive number
+          stx       cmdbuf+2,u          save out middle and low address
+          lda       cmdbuf,u    get the command
+          cmpa      #F.WRTdrv is it the format command?
+          bne       setbcnt   if not, we setup for a 1 block transfer
+          lda       PD.ILV,y  if we're formatting the drive, we need the interleave factor
+          bra       store4
+setbcnt   lda       #1        we only read or write one block at a time
+store4    sta       cmdbuf+4,u
+          ldx       PD.BUF,y  get the address of the buffer to use
+execute   lbsr      docmd     execute the command
+errhan    beq       noerr
+          cmpa      #$11      XEBEC CRC error?
+          bne       e1
+          lda       #E$CRC    return the os9 CRC error code
+          bra       errxit
+e1        cmpa      #4        XEBEC drive not ready error?
+          bne       e2
+          lda       #E$NotRdy return the os9 'not ready' error code
+          bra       errxit
+e2        adda      #128      add 128 to generate our own error codes
+errxit    tfr       a,b       put our error code where os9 wants it
+          orcc      #1        set the carry to indicate the error
+noerr     rts
+
+*******************************************************************************
+*
+* Write track
+*
+* input:  X -> register stack ---------- PD.RGS,y
+*         Y -> path descriptor           R$X -> buffer
+*         U -> static storage            R$Y  = side/dens this track
+*                                        R$U  = track number
+*
+WRTTRK    ldd       R$U,x     get the track number
+          bne       ignoreit  ignore any track other than track 0
+          lbsr      drvinit   setup the parameters for this drive
+          lda       #F.WRTdrv get write track command
+          clrb
+          ldx       #0        setup to format starting at lsn #0
+          lbra      comrw
+ignoreit  clrb
+          rts
+ pag
+****************************************************************
+*
+* Read Logical Sector Zero
+*
+*
+*
+READ0 lbsr comrw Read sector
+ lbcs RETRN8
+ ldx PD.BUF,Y
+ pshs X,Y
+ tst V.FREZ,u Skip copy of dd. info?
+ bne READ04 Yes; ....make quick exit.
+ ldy CURTBL,U
+ ldb #DD.SIZ-1
+READ01 lda B,X
+ sta B,Y
+ decb
+ bpl READ01
+READ04 clr V.FREZ,u Insure only one freeze
+ clrb
+ puls X,Y,PC
+
+***************************************************
+*
+* setup (initialize) drive parameters
+*
+drvinit   pshs      a,b,x
+          lda       PD.DRV,y
+          cmpa      V.NDRV,u
+          bhs       baddrv    if a number higher than what we support, go die
+          tsta
+          beq       isd0      if zero, we select drive 0
+          lda       #$20
+isd0      sta       CURDRV,u  store the proper drive select bit pattern
+          leax      DRVBEG,u  point to the start of the drive tables
+          ldb       #DRVMEM   get the size of a drive table
+          mul                 compute the offset to the proper drive table
+          leax      d,x       compute the address of the drive table
+          stx       CURTBL,u
+          ldb       PD.STP,y  find out what kind of drive we've got
+          lda       #6        each table entry is 6 bytes long
+          mul                 compute offset to proper drive description
+          leax      typtbl,pcr
+          leax      d,x       compute address of proper entry
+          ldd       ,x
+          std       reduce,u  reduced write current starting track
+          ldd       2,x
+          std       precom,u  precompensation starting track
+          lda       4,x
+          sta       eccbst,u  max ECC error burst length
+          lda       PD.SID,y
+          sta       heads,u   number of surfaces/drive
+          ldd       PD.CYL,y
+          std       cyls,u    number of cylinders/drive
+          lda       5,x
+          sta       cmdbuf+5,u step rate byte for all commands
+          clra
+          clrb
+          std       cmdbuf+1,u
+          std       cmdbuf+3,u
+          leax      cyls,u    point to parameter block
+          lda       #F.INIT   get initialize drive characteristics command
+          sta       cmdbuf,u
+          lbsr      docmd
+          puls      x,b,a,pc
+baddrv    ldb       #E$UNIT   bad unit number
+          comb
+          puls      x,b,a
+          leas      2,s       setup stack so we bail out
+          rts
+typtbl    equ       *
+oli       fdb       180,64,(11*256)+8
+cmi       fdb       306,306,(11*256)+4
+syquest   fdb       306,306,(11*256)+4
+spare1    fdb       0,0,0
+spare2    fdb       0,0,0
+******************************************************************************
+*
+* the great command executor!
+*
+* entered with cmdbuf setup properly and X pointing to the data to be transfered
+*
+docmd     bsr       excmd     go really execute a command
+          beq       doco7     if no error, we can leave
+          lda       #F.REQsns otherwise, let's find out what went wrong
+          sta       cmdbuf,u
+          leas      -4,s      create a temporary buffer on the stack for the error information
+          tfr       s,x
+          bsr       excmd
+          lda       ,s        get the error code
+          anda      #$7F
+          beq       doco6     if no real error, exit
+          cmpa      #$18      correctable data error is O.K.
+doco6     leas      4,s       release the error buffer
+doco7     rts
+
+excmd     pshs      y         save y just in case
+          ldb       #1        address controller #1
+          ldy       V.PORT,u  get the base address of the controller
+          stb       1,y       jam the controller address in
+          lda       #$30      enable dma and select the controller
+          stx       2,y       jam in the address of the memory buffer
+          sta       0,y       setup the DBI control register
+          pshs      x
+          leax      cmdbuf,u
+          lda       #6        there are 6 bytes to every command
+exc03     ldb       0,y
+          bpl       exc03     loop until controller wants something
+          ldb       ,x+       get a byte
+          stb       1,y       send it to the controller
+          deca
+          bne       exc03
+          puls      x
+          lda       #$70      set interrupt enable, select, and dma enable bits
+          orcc      #IRQmask  disable interrupts until we're able to deal with them
+          sta       0,y
+          ldb       V.BUSY,u  get our process i.d. so the interrupt routine will know who to wake up
+          stb       V.WAKE,u
+          ldx       #0        we will sleep until we get a signal
+          andcc     #$FF-IRQmask        reenable interrupts
+          os9       f$sleep   wait until error status comes in
+          lda       V.FDC,u   get the error status byte
+          bita      #2        set the Z flag based on bit 2
+          puls      y,pc
+
+******************************************************************************
+*
+* irq service routine
+REQSVC    ldx       V.PORT,u
+          clr       0,x       disable interrupts and dma
+          lda       1,x       get first status byte
+          pshs      a         save the status on the stack
+          ldb       V.WAKE,u  device busy?
+          bne       waitrq    wait until error status appears if device is busy
+          leas      1,s       set the stack back
+          rts
+waitrq    ldb       0,x       get status register
+          bpl       waitrq    if msb not set, second status byte has not appeared
+          ldb       1,x       get the second status byte and effectively throw it away
+          puls      b         get the first status byte back in b so we can send it back
+          lda       V.WAKE,u  get i.d. of process to awaken
+ clr V.WAKE,U
+ stb V.FDC,U store the first error status byte for the error checking
+ ldb #S$WAKE
+ OS9 F$Send
+ clrb
+RETRN8 rts
+ pag
+**************************************
+*
+* Terminate use of the disk
+*
+*
+*    Return Local memory to the system
+*    and assure that no intrpts will occur.
+*
+
+TERMNT ldx #0
+ OS9 F$IRQ Remove device from polling table
+          ldx       V.PORT,u
+ ldu V.BUF,u Point to memory for return
+ ldd #256
+ OS9 F$SRtMem Return local buffer to free mem
+          clr       0,x       Remove any fdc interrupt
+ rts
+
+ emod
+
+DSKEND equ *
+
+ end
