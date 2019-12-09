@@ -4,7 +4,7 @@
 
  use defsfile
 
- ifeq (CPUType-GIMIX)*(CPUType-EXORSR)
+ ifeq (CPUType-Gimix)*(CPUType-Exorsr)*(CPUType-Color)
  opt l
  else
  opt -l
@@ -64,19 +64,23 @@ OS9Nam fcs /OS9p1/
 *********
 * Version Id
 *
- ifeq CPUType-EXORSR
+ ifeq CPUType-Color
+ fcc /Color / Version name
+RamLimit set $FF00
+ endc
+ ifeq CPUType-Exorsr
  fcc / Exor / Version name
 RamLimit set $E000
  endc
- ifeq CPUType-MM19
- fcc / MM19 / Version name
+ ifeq CPUType-Mm19
+ fcc / Mm19 / Version name
 RamLimit set $E800
  endc
- ifeq CPUType-GIMIX
+ ifeq CPUType-Gimix
  fcc / Gmx  / Version name
 RamLimit set $E000
  endc
- ifeq CPUType-SWTC
+ ifeq CPUType-Swtc
  fcc /Swtpc / Version name
 RamLimit set $E000
  endc
@@ -88,15 +92,15 @@ RamLimit set $E000
  fcc /Smoke / Version name
 RamLimit set $E800
  endc
- ifeq CPUType-PERCOM
+ ifeq CPUType-Percom
  fcc /Percom/ Version name
 RamLimit set $E800
  endc
- ifeq CPUType-CMS9609
+ ifeq CPUType-Cms9609
  fcc / CMS  / Version name
 RamLimit set $E000
  endc
- ifeq CPUType-CMS9619
+ ifeq CPUType-Cms9619
  fcc / CMS  / Version name
 RamLimit set $F000
  endc
@@ -104,16 +108,16 @@ RamLimit set $F000
  fcc /Helix /
 RamLimit set $E000
  endc
- ifeq CPUType-ELEKTRA
+ ifeq CPUType-Elektra
  fcc /Elekt / AAA chicago cpu
 RamLimit set $E000
  endc
- ifeq CPUType-DIGALOG
+ ifeq CPUType-Digalog
  fcc /Diglog/ Digalog cpu
 RamLimit set $E000
  endc
- ifeq CPUType-SAT96
- fcc /SAT96 / Sat-96 board
+ ifeq CPUType-Sat96
+ fcc /Sat96 / Sat-96 board
 RamLimit set $E600
  endc
 
@@ -209,7 +213,7 @@ COLD10 leay 0,X Copy current ptr
  leay 0,X Copy end-of-ram ptr
 COLD15 leax 0,Y Copy eor ptr
 
- ifeq CPUType-EXORSR
+ ifeq CPUType-Exorsr
 *** >>> Patch For Exorciser Environment <<< ***
 *
  leax NMI,pcr
@@ -1565,11 +1569,11 @@ SETSVC ldb ,Y+ Get next routine offset
  rts
  page
 
- ifne (CPUType-GIMIX)*(CPUType-EXORSR)
+ ifne (CPUType-Gimix)*(CPUType-Exorsr)
  opt l
  endc
 
- ifeq CPUType-GIMIX
+ ifeq CPUType-Gimix
 *
 * Dynamic Address Translator Initialization
 *
@@ -1586,7 +1590,7 @@ DAT10 stb B,X Init dat register
  lbra COLD
  endc
 
- ifeq CPUType-SWTC
+ ifeq CPUType-Swtc
 *
 * Dynamic Address Translator Initialization
 *
@@ -1656,7 +1660,7 @@ DAT10 stb B,X Init dat register
  emod
 OS9End equ *
  page
- ifeq CPUType-CMS9619
+ ifeq CPUType-Cms9619
 *****
 * CMS 9619 CPU patch
 *
@@ -1734,10 +1738,10 @@ SYSVEC fdb SWI3HN+$FFE2-* Swi3 handler
  fdb SWIRQ+$FFFA-* Swi
  fdb NMI+$FFFC-* Nmi
 
- ifeq (CPUType-MM19)*(CPUType-PERCOM)*(CPUType-CMS9609)*(CPUType-ELEKTRA)*(CPUType-DIGALOG)*(CPUType-SAT96)
+ ifeq (CPUType-Mm19)*(CPUType-Percom)*(CPUType-Cms9609)*(CPUType-Elektra)*(CPUType-Digalog)*(CPUType-Sat96)*(CPUType-Color)
  fdb COLD+$FFFE-* Restart
  else
- ifeq (CPUType-EXORSR)*(CPUType-CMS9619)
+ ifeq (CPUType-Exorsr)*(CPUType-Cms9619)
  fdb COLD+$FFFE-*
  else
  fdb DATINT+$FFFE-* Dynamic address translator initialization

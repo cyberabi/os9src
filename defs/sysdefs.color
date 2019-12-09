@@ -1,0 +1,5 @@
+CPUType set Color
+ClocType set 0
+
+DPort set $FF40
+
