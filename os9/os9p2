@@ -1,5 +1,5 @@
 
- nam OS-9 Level I V1.2 kernal, part 2
+ nam OS-9 Level I CoCo 1.00.00 kernal, part 2
  ttl Module Header
 
 
@@ -43,6 +43,8 @@ OS9Nam fcs /OS9p2/
 *
 * Edition  8 -  Change made to setime system call enabling it to
 *               call the init routine of the clock module  WGP
+*
+* Edition  ? -  Backport to match CoCo OS9 distribution  CJB
 *
  fcb 8 Edition number
 
@@ -917,8 +919,8 @@ OS9End equ *
 *
 * Configuration Module
 *
-Type set SYSTM
- mod ConEnd,ConNam,Type,Revs
+CType set SYSTM
+ mod ConEnd,ConNam,CType,Revs
  fcb 0 no extended memory
  fdb $F800 High free memory bound
  fcb 12 Entries in interrupt polling table
