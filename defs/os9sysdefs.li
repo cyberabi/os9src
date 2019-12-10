@@ -49,7 +49,11 @@ D.PthDBT rmb 2 Path descriptor block table addr
 D.BTLO rmb 2 Bootstrap low address
 D.BTHI rmb 2 Bootstrap hi address
 D.DMAReq rmb 1 DMA in use flag
-
+D.AltIRQ rmb 2 Alternate IRQ vector (CC)
+D.KbdSta rmb 2 Keyboard scanner static storage (CC)
+D.DskTmr rmb 2 Disk Motor Timer (CC)
+D.CBStrt rmb 16 Reserved for CC warmstart ($71)
+D.Clock rmb 2 Address of Clock Tick Routine (CC)
 
 * TABLE SIZES
 

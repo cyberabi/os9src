@@ -1,5 +1,5 @@
 
- nam OS-9 Level I V1.2 kernal, part 1
+ nam OS-9 Level I CoCo 1.00.00 kernal, part 1
  ttl System Type definitions
 
  use defsfile
@@ -37,8 +37,15 @@
 *
 Type set SYSTM+OBJCT
 Revs set REENT+1
+ ifeq CPUType-Color
+ROMEnd equ * On color computer base of module = end of memory
+ endc
  mod OS9End,OS9Nam,Type,Revs,COLD,0
+ ifeq CPUType-Color
+OS9Nam fcs /OS9/
+ else
 OS9Nam fcs /OS9p1/
+ endc
  fcb 12 Edition number
 
 *************************
@@ -60,13 +67,19 @@ OS9Nam fcs /OS9p1/
 *          S09 cpu datinit changed to save one byte of code
 *          These were to allow S09 version to fit in $800
 *                                                      WGP  01/10/83
+*
+* Ed. ?? - Changes to match Color Computer V1.00.00
+*          Version Id is "CC"
+*          Undid RETCS1 change
+*          No vector table output or padding (not ROMable)
+*                                                      CJB  12/09/19
 
 *********
 * Version Id
 *
  ifeq CPUType-Color
- fcc /Color / Version name
-RamLimit set $FF00
+ fcc /CC/ Version name
+RamLimit set $F000
  endc
  ifeq CPUType-Exorsr
  fcc / Exor / Version name
@@ -121,9 +134,42 @@ RamLimit set $E000
 RamLimit set $E600
  endc
 
+ ifeq CPUType-Color
+CNFSTR fcs /INIT/ Configuration module name
+OS9STR fcs /OS9P2/ Kernal, part 2 name
+ else
 CNFSTR fcs /Init/ Configuration module name
 OS9STR fcs /OS9p2/ Kernal, part 2 name
+ endc
+
  page
+ ifeq CPUType-Color
+*****
+*
+* Interrupt dispatch table
+*
+VectCode equ *
+ bra SWI3Jmp
+ nop
+ bra SWI2Jmp
+ nop
+ bra SWIJmp
+ nop
+ bra NMIJmp
+ nop
+ bra IRQJmp
+ nop
+ bra FIRQJmp
+
+SWI3Jmp jmp [D.SWI3]
+SWI2Jmp jmp [D.SWI2]
+SWIJmp jmp [D.SWI]
+NMIJmp jmp [D.NMI]
+IRQJmp jmp [D.IRQ]
+FIRQJmp jmp [D.FIRQ]
+VectEnd equ *
+ endc
+
 *****
 *
 * System Service Routine Table
@@ -163,16 +209,19 @@ SVCTBL equ *
  fdb SSVC-*-2
  fcb $80
 
-
-
  ttl COLD Start
  page
 *
 * Clear System Memory, Skipping First 32 Bytes
 *
 LORAM set $20
+ ifeq CPUType-Color
+HIRAM set $400
+RAMMSK set $F8 Initial bit map mask
+ else
 HIRAM set $300
 RAMMSK set $F0 Initial bit map mask
+ endc
 COLD ldx #LORAM Set ptr
  ldy #HIRAM-LORAM Set byte count
  clra CLEAR D
@@ -181,6 +230,9 @@ COLD05 std ,X++ Clear two bytes
  leay -2,Y Count down
  bne COLD05
  inca ONE Page for direct page
+ ifeq CPUType-Color
+ inca ANOTHER Page for direct page
+ endc
  std D.FMBM Set free memory bit map
  addb #BMAPSZ Add map size
  std D.FMBM+2
@@ -236,6 +288,23 @@ EndRAM equ $A50 This must be greater than the size
  endc
 
  stx D.MLIM Set memory limit
+
+ ifeq CPUType-Color
+*** >>> Patch For Color Computer Environment <<< ***
+*
+ pshs y,x
+ leax VectCode,pcr get vector table
+ ldy #$100 get destination for vectors 
+ ldb #(VectEnd-VectCode)
+CpyVec1 lda ,x+ copy from vector table
+ sta ,y+ to destination
+ decb
+ bne CpyVec1
+ puls x,y
+*
+*** >>> End Of Color Computer Patch <<< ***
+ endc
+
 *
 * Search Memory For Modules, Build Module Directory
 *
@@ -270,6 +339,12 @@ COLD45 ldd ,Y++ get vector
  stx D.SWI2 Set service to system state
  leax IOPOLL,PCR Set irq polling routine
  stx D.POLL
+
+ ifeq CPUType-Color
+ leax TICK,PCR Get clock service routine
+ stx D.CLOCK CoCo 0081
+ endc
+
 *
 * Initialize Service Routine Dispatch Table
 *
@@ -302,6 +377,8 @@ COLD50 ldx D.FMBM Get bit map ptr
 
  ttl INTERRUPT Service handlers
  page
+ ifeq CPUType-Color
+ else
 *****
 *
 *  Swi3 Interrupt Routine
@@ -347,6 +424,8 @@ SWIRQ jmp [D.SWI] Go thru page zero vector
 *  Nmi Interrupt Routine
 *
 NMI jmp [D.NMI] Go thru page zero vector
+ endc
+
  page
 *****
 *
@@ -1138,9 +1217,6 @@ SETP15 leay 0,U Copy module ptr
  ldd M$Mem,Y Get memory required
 SETP20 addd #0 Req for zero data mem?
  bne SETP25 bra if not
- comb
- ldb #E$DelSP Error process must have at least one page mem
- bra SETP50
 SETP25 OS9 F$MEM Mem to correct size
  bcs SETP50 Branch if no memory
  subd #R$SIZE Deduct stack room
@@ -1525,7 +1601,8 @@ CHKN10 lda ,Y+ Get (next) char of module name
  eora ,X+ Equal pathname char?
  anda #$FF-$20 Match upper/lower case
  beq CHKN10 ..yes; repeat
-RETCS1 comb Set carry
+RETCS1 equ *
+ orcc #CARRY Set carry
  puls D,X,Y,PC
 CHKN20 decb LAST Char of pathname?
  bne RETCS1 Branch if not
@@ -1659,7 +1736,21 @@ DAT10 stb B,X Init dat register
 
  emod
 OS9End equ *
+
  page
+ ifeq CPUType-Color
+*
+* Os-9 System Entries
+*
+ fdb TICK Clock tick handler
+SYSVEC fdb SWI3HN Swi3 handler
+ fdb SWI2HN Swi2 handler
+ fdb FIRQHN Fast irq handler
+ fdb IRQHN Irq handler
+ fdb SWIHN Swi handler
+ fdb NMIHN Nmi handler
+
+ else
  ifeq CPUType-Cms9619
 *****
 * CMS 9619 CPU patch
@@ -1738,17 +1829,20 @@ SYSVEC fdb SWI3HN+$FFE2-* Swi3 handler
  fdb SWIRQ+$FFFA-* Swi
  fdb NMI+$FFFC-* Nmi
 
- ifeq (CPUType-Mm19)*(CPUType-Percom)*(CPUType-Cms9609)*(CPUType-Elektra)*(CPUType-Digalog)*(CPUType-Sat96)*(CPUType-Color)
+ ifeq (CPUType-Mm19)*(CPUType-Percom)*(CPUType-Cms9609)*(CPUType-Elektra)*(CPUType-Digalog)*(CPUType-Sat96)
  fdb COLD+$FFFE-* Restart
  else
  ifeq (CPUType-Exorsr)*(CPUType-Cms9619)
  fdb COLD+$FFFE-*
  else
  fdb DATINT+$FFFE-* Dynamic address translator initialization
+ else
+ endc
  endc
  endc
 
+ ifne CPUType-Color
 ROMEnd equ *
-
+ endc
 
  end
