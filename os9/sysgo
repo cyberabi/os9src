@@ -1,4 +1,4 @@
- nam SysGo
+ nam SysGo CoCo 1.00.00
  ttl SysGo - system bootstrap startup module
 
 * Copyright 1980 by Motorola, Inc., and Microware Systems Corp.,
@@ -27,8 +27,30 @@ CldNam fcs /SysGo/
 
  fcb 5 Edition number
 
+ ifeq CPUType-Color
+ rmb 200
+ else
  rmb 256 stack space
+ endc
+
 CldMem equ .
+
+MOTD equ *
+ fcc "         OS-9 LEVEL ONE"
+ fcb $0d,$0a
+ fcc "      RS VERSION 01.00.00"
+ fcb $0d,$0a
+ fcc "COPYRIGHT 1980 BY MOTOROLA INC."
+ fcb $0d,$0a
+ fcc "  AND MICROWARE SYSTEMS CORP."
+ fcb $0d,$0a
+ fcc "   REPRODUCED UNDER LICENSE"
+ fcb $0d,$0a
+ fcc "       TO TANDY CORP."
+ fcb $0d,$0a
+ fcc "    ALL RIGHTS RESERVED."
+ fcb $0d,$0a,$0a
+MOTDEnd equ *
 
 DirStr fcc "Cmds"
  fcb $D
@@ -36,14 +58,40 @@ DirStr fcc "Cmds"
 CMDSTR fcc "Shell"
  fcb $D
  fcc ",,,,,,,,,," room for patch
-SHLFUN fcc "STARTUP -p"
+SHLFUN fcc "STARTUP -P"
  fcb $D
-FUNSIZ equ *-SHLFUN
  fcc ",,,,,,,,,," room for patch
+FUNSIZ equ *-SHLFUN
 
 
-CldEnt leax CLICPT,PCR Set up signal intercept
+ ifeq CPUType-Color
+WarmVec fcb $55
+ neg D.CBStrt+3 was 0074
+ nop this is what is negated
+ clr $FF03 Vertical sync control 
+ sta $FFDF upper 32K ram
+ jmp $F00C ???
+WVEnd equ *
+ endc
+
+CldEnt equ *
+ leax CLICPT,PCR Set up signal intercept
  OS9 F$ICPT
+
+ ifeq CPUType-Color
+ leax WarmVec,PCR get cold start hook ptr
+ ldu #D.CBStrt Color Computer warm start
+ ldb #(WVEnd-WarmVec) get length
+CldEnt1 lda ,X+
+ sta ,U+
+ decb
+ bne CldEnt1
+ leax MOTD,PCR get startup msg ptr
+ ldy #(MOTDEnd-MOTD) get length
+ lda #1 standard out
+ OS9 I$WRITE 
+ endc
+
  leax DirStr,PCR Get directory name ptr
  lda #EXEC. Get execution mode
  OS9 I$ChgDir Change execution directory
@@ -63,7 +111,12 @@ CLDM10 leax CMDSTR,PCR Get command name ptr
  OS9 F$WAIT Wait for it to die
  bcc CLDM10
 
-CLDERR jmp [$FFFE]
+CLDERR equ *
+ ifeq CPUType-Color
+ bra CLDERR
+ else
+ jmp [$FFFE]
+ endc
 
 CLICPT rti COLDSTART Intercept routine
 
