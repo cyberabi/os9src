@@ -27,7 +27,7 @@ Revs set REENT+1
  mod SleepEnd,SleepNam,Type,Revs,SleepEnt,sleepmem
 SleepNam fcs /Sleep/
 
- fcb 2 Edition number
+ fcb 1 Edition number
 *****
 * REVISION HISTORY
 * edition 1: prehistoric

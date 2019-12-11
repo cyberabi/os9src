@@ -23,7 +23,7 @@
  mod BLDEND,BLDNAM,PRGRM+OBJCT,REENT+1,BLDENT,BLDMEM
 BLDNAM fcs "Build"
 
- fcb 5 edition level
+ fcb 4 edition level
 *****
 * REVISION HISTORY
 * edition 4: prehistoric

@@ -22,7 +22,7 @@
  mod LNKEND,LNKNAM,PRGRM+OBJCT,REENT+1,LNKENT,LNKMEM
 LNKNAM fcs "Link"
 
- fcb 5 edition number
+ fcb 4 edition number
 *****
 * REVISION HISTORY
 * edition 4: prehistoric

@@ -24,7 +24,7 @@
  mod ECHEND,ECHNAM,PRGRM+OBJCT,REENT+1,ECHO,ECHMEM
 ECHNAM fcs "Echo"
 
- fcb 5 edition number
+ fcb 4 edition number
 *****
 * REVISION HISTORY
 * edition 4: prehistoric

@@ -18,7 +18,7 @@
  mod DATEND,DATNAM,PRGRM+OBJCT,REENT+1,DATE,DATMEM
 DATNAM fcs "Date"
 
- fcb 4 edition number
+ fcb 3 edition number
 *******************
 * REVISION HISTORY
 * edition 3: prehistoric

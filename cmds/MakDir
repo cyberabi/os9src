@@ -22,7 +22,7 @@
  mod MKDEND,MKDNAM,PRGRM+OBJCT,REENT+1,MKDENT,MKDMEM
 MKDNAM fcs "Makdir"
 
- fcb 4 edition number
+ fcb 3 edition number
 *****
 * REVISION HISTORY
 * edition 3: prehistoric

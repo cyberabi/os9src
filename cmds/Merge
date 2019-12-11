@@ -18,7 +18,7 @@
  mod MRGEND,MRGNAM,PRGRM+OBJCT,REENT+1,MRGENT,MRGMEM
 MRGNAM fcs "Merge"
 
- fcb 4 edition number
+ fcb 3 edition number
 *****
 * REVISION HISTORY
 * edition 3: prehistoric

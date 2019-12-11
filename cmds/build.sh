@@ -1,0 +1,26 @@
+#!/bin/bash
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/Build Build
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/Copy Copy
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/Date Date
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/Del Del
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/Dump Dump
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/Echo Echo
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/Free Free
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/Ident Ident
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/Link Link
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/List List
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/Load Load
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/Login Login
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/MakDir MakDir
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/Merge Merge
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/PrintErr PrintErr
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/ReName ReName
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/Save Save
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/Setime Setime
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/Shell Shell
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/Sleep Sleep
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/TMode TMode
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/TSMon TSMon
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/Tee Tee
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/UnLink UnLink
+xasm -l -m/d0/defs,../defs -m../../defs,../defs -i. -i../defs -o../modules/cmds/Verify Verify
