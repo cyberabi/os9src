@@ -1,0 +1,414 @@
+ opt l
+ nam CoCo 1.00.00 FD-500 controller boot source
+
+ opt -c
+
+ use defsfile
+
+ ttl Boot Module
+ pag
+*******************************************************************
+*
+*                 Microware Systems Corporation
+*
+*
+*       Os-9 CoCo FD-500 Disk Boot Module
+*
+*       Software To Boot FD-5xx, DISTO, And J&M Disk Controllers
+*
+*                         Revised By
+*                     William G. Phelps
+*                    Christopher J. Burke
+*
+*
+*       This Controller Uses The WD 1773 Lsi Disk Controller
+*
+**********************************************************************
+
+
+
+
+
+
+***************************************************************
+*
+* Disk Boot Module Header
+*
+*
+ mod BTEND,BTNAM,SYSTM+OBJCT,REENT+1,BTENT,BTSTA
+BTNAM fcs "Boot"
+
+ fcb 0 Edition telltale byte
+*******************
+* Revision History
+* edition 0: prehistoric
+* edition 1: all use statements converted to use defsfile
+*            copyright removed from object file
+*            disktype set Dc3 added
+* edition ?: backported to CoCo 1.00.00
+*******************
+
+ pag
+*********************************************************************
+*
+* Static Storage
+*
+*
+ org 0
+V.DRV rmb 1 Drive number
+V.TMP rmb 1 Temporary save byte
+V.BUF rmb 2 Local buffer addr
+V.TRCK rmb 1 Current track
+BTSTA equ . Total static requirement
+
+
+*
+* FD1773 Commands
+*
+
+F.REST equ $03 Restore command
+F.SEEK equ $13 Seek command
+F.STPI equ $43 Step in one track command
+F.READ equ $80 Read sector command (non-IBM)
+F.WRIT equ $A0 Write sector command (non-IBM)
+F.TYP1 equ $D0 Force type 1 status
+F.WRTR equ $F4 Write track command
+
+*
+* Hardware Offsets from DPort
+*
+
+ org 0
+DP.Ctrl rmb 1 control register
+ rmb 7
+DP.CmdR rmb 1 command register
+DP.TrkR rmb 1 track register
+DP.SecR rmb 1 sector register
+DP.DatR rmb 1 data register
+
+SeekDly set 8750 seek delay
+MotorDly set 50000 disk select delay
+MotorOn set %00001000 motors on
+RddDrv0 set %00111001 select drive 0, DD, precomp
+SelDrv0 set %00001001 select drive 0
+HaltDrv0 set %10111001 enable halt on drive 0
+SPT set 18
+
+VV.NMI set $0109 NMI hook
+
+ pag
+****************************************************************
+*
+* Initialize The I/O Port
+*
+*  Input: (U)= Pointer To Global Storage
+*
+*  On Exit: (A) Modified
+*           (X) Modified
+*           (Y) Unchanged
+*           (U) Unchanged
+*
+BTENT clra
+ ldb #BTSTA Get size of needed static
+INILUP pshs a
+ decb
+ bne INILUP
+ tfr s,u Point "u" to static
+ ldx #DPORT Point to controller addr
+ leax DP.CmdR,X Address of command register
+ lda #F.Typ1
+ sta 0,x Inz controller chip
+ lbsr DELAY1 Wait for 1771
+ lda 0,x Read controller status to clear it.
+ lda #$FF
+ sta V.TRCK,U Inz to high track count
+
+ leax READNMI,PCR hook NMI for halt
+ stx VV.NMI+1
+ lda #$7E jmp opcode
+ sta VV.NMI+0
+
+ lda #MotorOn turn on disk motors
+ sta DPort+DP.Ctrl
+ ldd #MotorDly spin up delay
+SelDly nop
+ nop
+ subd #1
+ bne SelDly
+
+*        Fall thru to do the boot
+ pag
+*******************************************************************
+*
+* Bootstrap System From Disk
+*
+*         (U)= Pointer Global Storage
+*
+*  Output: (D)= Length Of Bootstrap Data
+*          (X)= Address Of Start Of Boot Data
+*          (Y) Unchanged
+*          (U) Unchanged
+*
+LBOOT pshs D,X,U Save registers
+ clra
+ clrb
+ ldy #1
+ ldx D.FMBM
+ ldu D.FMBM+2
+ OS9 F$SchBit Search for buffer spot
+ bcs BOOTE1 Problem no mem
+ exg a,b Convert page no. to addr
+ ldu 4,s Restore "u"
+ std V.BUF,u Save buffer addr for use
+ clrb
+ ldx #0 Get sector zero
+ bsr READSK
+ bcs BOOTE1 Branch if can't
+ ldd DD.BSZ,Y Get bootstrap size
+ std 0,S Return to caller
+ OS9 F$SRqMem Get boot memory
+ bcs BOOTE1 Branch if none
+ stu 2,S Return to caller
+ ldu 4,S Get static storage
+ ldx 2,s Get mem addr
+ stx V.BUF,u
+ ldx DD.BT+1,Y Get boot sector
+ ldd DD.BSZ,Y Get boot size
+ beq BOOT2
+BOOT1 pshs D,X Save size, sector number
+ clrb
+ bsr READSK Read sector
+ bcs BOOTER
+ puls D,X Retrieve size, sector number
+ inc V.BUF,U Move buffer ptr
+ leax 1,X Up sector number
+ subd #$100 Subtract page read
+ bhi BOOT1 Branch if more
+BOOT2 clrb CLEAR Carry
+ puls d
+ bra Bootz
+
+
+BOOTER leas 4,S Return scratch
+BOOTE1 leas 2,S Return scratch
+Bootz puls x,u
+ leas BTSTA,s De-allocate static fm stack
+ rts
+ pag
+*********************************************************
+*
+* Restore Drive To Track Zero
+*
+*  Input: (Y)= Pointer To Path Descriptor
+*         (U)= Pointer To Global Storage
+*
+*  If Error: (B)= Error Code & Carry Is Set
+*
+* Note:  We Are Stepping In Several Tracks Before
+*        Issuing The Restore.  As Suggested In The
+*        Application Notes.
+*
+RESTOR clr V.Drv,u
+ clr V.TRCK,U Old track = 0
+ lda #5 Repeat five times
+RESTR2 ldb #F.STPI Step in command
+ pshs A
+ lbsr WCR0 Issue command, delay & wait for done.
+ puls A
+ deca DONE Stepping?
+ bne RESTR2 ...no; step again.
+ ldb #F.REST Restore command
+ lbra WCR0
+ pag
+*************************************************************
+*
+* Read Sector Command
+*
+* Input: B = Msb Of Logical Sector Number
+*        X = Lsb'S Of Logical Sector Number
+*        Y = Ptr To Path Descriptor
+*        U = Ptr To Global Storage
+*
+* Output: 256 Bytes Of Data Returned In Buffer
+*
+* Error: Cc=Set, B=Error Code
+*
+READSK lda #$91 Error retry code
+ cmpx #0 Is this sector zero?
+ bne RDSK3 Branch if not
+Read0 bsr RDSK3 Read sector into buffer
+ bcs Retrn1
+ ldy V.BUF,u Point "y" to dd. info
+ clrb
+Retrn1 rts
+
+
+RDSK1 bcc RDSK3 Retry without restore
+ pshs D,X
+ bsr RESTOR Drive to tr00
+ puls D,X
+RDSK3 pshs D,X
+ bsr READSC Read sector
+ puls D,X
+ bcc Retrn1 Return if no error
+ lsra DONE?
+ bne RDSK1 ...no; retry.
+*
+* Fall Through To Try One Last Time
+*
+READSC bsr PHYSIC Move head to track
+ bcs Retrn1
+ ldx V.BUF,u Point to buffer
+ orcc #IRQMask+FIRQMask Disable interrupts
+ pshs y
+ ldy #-1
+ ldb #F.READ Read sector command
+ stb DPort+DP.CmdR
+ ldb #RddDrv0 Drive 0, DD, precomp
+ stb DPort+DP.Ctrl
+ lbsr DELAY1
+ ldb #HaltDrv0 enable halting
+ lda #%00000010 poll data request bit
+READSC1 bita DPort+DP.CmdR
+ bne READS2 data is ready
+READSC2 leay -1,y timeout
+ bne READSC1
+ lda #SelDrv0
+ sta DPort+DP.Ctrl
+ puls y
+ bra RDERR
+
+ pag
+************************************************************
+*
+* Read Loop
+* Terminated by hardware NMI
+*
+READS2 lda DPort+DP.DatR Get data
+ sta ,X+ Store it
+ stb DPort+DP.Ctrl refresh
+ bra READS2
+
+READNMI leas 12,s
+ puls y Restore regs
+ ldb DPort+DP.CmdR Get status
+ bitb #%00000100 Lost data?
+ lbeq STCK
+
+RDERR comb
+ ldb #E$Read
+ rts
+ pag
+**************************************************************
+*
+* Convert Logical Sector Number To Physical Track And Sector
+*
+*  Input:  B = Msb Of Logical Sector Number
+*          X = Lsb'S Of Logical Sector Number
+*  Output: A = Physical Track Number
+*          Sector Reg = Physical Sector Number
+*  Error:  B = Error Code, W/Carry Set
+*
+
+PHYSIC clr V.DRV,u
+ tfr X,D Logical sector (os-9)
+ cmpd #0 Logical sector zero?
+ beq PHYSC7 ..yes; skip conversion.
+ clr ,-s alloc temp
+ bra PHYSC4
+PHYSC3 inc 0,S
+PHYSC4 subd #SPT sectors per track
+ bcc PHYSC3 Repeat until less than 1 trk
+PHYSC5 addb #SPT Add back for sector number
+ puls A Desired track.
+PHYSC7 equ *
+
+* Fall thru to do actual seek
+ pag
+**************************************************************
+*
+* Move Head To New Track
+*
+* Update Track Table With
+* The Current Track
+*
+* Load The Track Register With The
+* Old Track
+*
+* Input:
+*   A = New Track
+*   B = New Sector - 1
+* Output:
+*   B = Contents Of FD1773 Status Reg
+*   A,X = Destroyed
+*
+
+SETTRK incb sectors start at 1
+ stb DPort+DP.SecR put sector in sector reg
+ ldb V.TRCK,U Get old track
+ stb DPort+DP.TrkR Put old track in trk reg
+ cmpa V.TRCK,U Same track?
+ beq SETRK9 ..yes; skip seek.
+ sta V.TRCK,U Update with new track
+ sta DPort+DP.DatR Put new trk in data reg
+ ldb #F.SEEK Command
+ bsr WCR0 Issue command
+
+ pshs x
+ ldx #SeekDly delay for seek
+SETTRK1 leax -1,x
+ bne SETTRK1
+ puls x
+
+Setrk9 clrb
+ rts
+ pag
+***********************************************************
+*
+* Check Status For Error Conditions
+*
+*  Input: (B)= Status Of FD1773
+*
+*  If Error: (B)= Error Code & Carry Is Set
+*
+*  If No Error: Carry Is Clear
+*
+STCK bitb #%10011000 not ready / seek error / check sum?
+ bne RDERR ..yes; error
+ clrb
+ rts
+
+ pag
+****************************************************************
+*
+*
+* Write Command Register
+*
+*
+*   1 - Will Add Step Rate To Seek Commands When Wcr0 Called
+*   2 - Issues Command To Controller Chip
+*   3 - Will Wait For Status "Not Busy" If Wcr0 Called
+*
+*
+
+WCR0 bsr DELAY delay after command
+WCR02 ldb DPort+DP.CmdR Get status
+ bitb #%00000001 Busy?
+ bne WCR02 ..yes; wait for it.
+ rts
+
+WCR lda #SelDrv0
+ sta DPort+DP.Ctrl Select drive
+ stb DPort+DP.CmdR Issue command
+ rts
+
+DELAY bsr WCR
+DELAY1 lbsr DELAY2
+DELAY2 lbsr DELAY4
+DELAY4 rts
+
+ emod
+
+BTEND equ *
+
+ end
