@@ -65,12 +65,13 @@ FUNSIZ equ *-SHLFUN
 
 
  ifeq CPUType-Color
-WarmVec fcb $55
- neg D.CBStrt+3 was 0074
- nop this is what is negated
+WarmVec fcb $55 sentinel
+ fcb $00 non-zero if warm start
+ fcb $74
+ nop
  clr $FF03 Vertical sync control 
  sta $FFDF upper 32K ram
- jmp $F00C ???
+ jmp $F00C run boot code loaded from disk
 WVEnd equ *
  endc
 

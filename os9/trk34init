@@ -1,0 +1,69 @@
+ use defsfile
+
+Screen equ $8000
+ScnSize equ 512
+ScnCtr equ (Screen+(32*8)+12)
+ScnSpc equ $40+' '
+Scn9 equ $40+'9'
+
+ROMBeg equ $F000
+ROMSize equ $0F00
+
+ org $0000
+
+INIT fcb 'O','S' sentinel
+ fdb $260C
+
+Splash fcb 'O','S' splash message
+ fcb Scn9,ScnSpc
+ fcb 'B','O','O','T'
+SplashX equ *
+
+Entry CLR $FF03 vertical sync control
+ sta $FFDF upper 32K RAM
+
+* Set screen at $8000
+ ldb #6 count of regs to set
+ ldx #$FFC6 display offset regs
+SetReg sta ,X++ clear bit
+ decb
+ bne SetReg
+ sta $01,X set final bit
+
+* Clear screen
+ ldx #Screen addr of screen
+ ldy #ScnSize size of screen
+ lda #ScnSpc space character
+ClrScn sta ,X+
+ leay -$01,Y
+ bne ClrScn
+
+* Display splash msg
+ ldx #ScnCtr addr of screen center
+ leay Splash,PCR msg
+ ldb #(SplashX-Splash) size
+CpySpl lda ,Y+
+ sta ,X+
+ decb
+ bne CpySpl
+
+ tst D.CBStrt+1 warm start?
+ beq GoWarm
+
+* Copy OS9 to "ROM" area
+ leau INIT,PCR addr of this code
+ ldx #ROMSize size to copy
+ ldy #ROMBeg destination
+CpyROM lda ,U+
+ sta ,Y+
+ leax -$01,X
+ bne CpyROM
+
+* Continue at relocated address
+GoWarm jmp Warm2+ROMBeg
+Warm2 leax OS9Beg,PCR OS9 mod follows immed
+ ldd M$Exec,X entry offset
+ jmp D,X go at entry addr
+OS9Beg equ *
+
+ end
