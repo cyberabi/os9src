@@ -17,27 +17,26 @@
 * Clock Initializer Module
 *   Sets System Time
 
+ use defsfile
+
 *  Module Header
 Type set PRGRM+OBJCT
 Revs set REENT+1
  mod STimEnd,STimNam,Type,Revs,STimEnt,STmem
 STimNam fcs "Setime"
 
- fcb 9 Edition number
+ fcb 8 Edition number
 *****
 * REVISION HISTORY
 * edition 8: prehistoric
-* edition 9: stack and param space reserved
 *****
-
- use defsfile
 
 *****
 * Static Storage
 *
           org 0
-          rmb 250 room for stack
-          rmb 200 room for params
+          rmb 256 room for stack
+          rmb 256 room for params
 STmem     equ .
 
 
