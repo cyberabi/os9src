@@ -39,8 +39,8 @@ SleepNam fcs /Sleep/
 * Static Storage Offsets
 *
           org 0
-          rmb 250  room for stack
-          rmb 200  room for params
+          rmb 256  room for stack
+          rmb 256  room for params
 sleepmem  equ .
 
 
