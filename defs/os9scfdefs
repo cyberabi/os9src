@@ -72,7 +72,7 @@ PD.QUT rmb 1 KBD QUIT char (ctl q)
 PD.BSE rmb 1 BACKSPACE ECHO charACTER
 PD.OVF rmb 1 LINE OVERFLOW char (BELL)
 PD.PAR rmb 1 PARITY CODE
- rmb 1 reserved
+PD.BAU rmb 1 ACIA BAUD RATE (Color Computer)
 PD.D2P rmb 2 OFFSET of DEV2 name
 PD.XON rmb 1 ACIA X-ON char
 PD.XOFF rmb 1 ACIA X-OFF char
