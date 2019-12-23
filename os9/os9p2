@@ -44,9 +44,9 @@ OS9Nam fcs /OS9p2/
 * Edition  8 -  Change made to setime system call enabling it to
 *               call the init routine of the clock module  WGP
 *
-* Edition  ? -  Backport to match CoCo OS9 distribution  CJB
+* Edition  10 -  Backport to match CoCo OS9 distribution  CJB
 *
- fcb 8 Edition number
+ fcb 10 Edition number
 
  ttl Service Routine initialization table
  page
@@ -67,10 +67,10 @@ SVCTBL equ *
  fdb USRMEM-*-2
  fcb F$SEND
  fdb SEND-*-2
- fcb F$ICPT
- fdb INTCPT-*-2
  fcb F$Sleep
  fdb SLEEP-*-2
+ fcb F$ICPT
+ fdb INTCPT-*-2
  fcb F$ID
  fdb GETID-*-2
  fcb F$SPrior
@@ -425,30 +425,42 @@ SEND15 inca Get next process id
 *
 SENSUB ldx D.PrcDBT Get process descriptor block ptr
  OS9 F$Find64 Get process ptr
- bcc SEND20 Branch if good
+ bcc SEND18 Branch if good
  ldb #E$IPrcID Err: illegal process id
  rts
 *
+* Illegal process id
+*
+ILLPRC comb
+ ldb #E$IPrcID Err: illegal process id
+ puls A,Y,PC
+*
 * Check Signal type
 *
-SEND20 orcc #IRQMask+FIRQMask Set interrupt masks
- pshs A,Y Save process id & ptr
+SEND18 pshs Y,A
  ldb R$B,U Is it unconditional abort signal?
  bne SEND30 Branch if not
- lda P$State,Y Get process status
+ ldx D.Proc
+ ldd P$USER,X Get sending user
+ beq SEND20
+ cmpd P$User,Y Same as current user?
+ bne ILLPRC
+SEND20 lda P$State,Y Get process status
  ora #CONDEM Condem process
  sta P$State,Y Update status
 *
 * Check for Signal collision
 *
-SEND30 lda P$Signal,Y Is signal pending?
+SEND30 orcc #IRQMask+FIRQMask Set interrupt masks
+ lda P$Signal,Y Is signal pending?
  beq SEND40 Branch if not
  deca Is it wake-up?
  beq SEND40 Branch if so
  comb Set Carry
  ldb #E$USigP Err: unprocessed signal pending
  puls A,Y,PC
-SEND40 stb P$Signal,Y Save signal
+SEND40 ldb 2,U
+ stb P$Signal,Y Save signal
 *
 * Look for Process in Sleeping Queue
 *
@@ -863,6 +875,7 @@ RTRNP9 clr ,S+ Return scratch with carry clear
 *
 IOSTR fcb 'I,'O,'M,'A,'N+$80
 IOHOOK pshs D,X,Y,U Save registers
+ ldu D.Init get configuration pointer
  bsr IOLink Link ioman
  bcc IOHOOK10
  bsr BOOT Ioman not found, boot
@@ -882,6 +895,9 @@ IOLink leax IOSTR,PCR Get ioman name ptr
 
 BOOT pshs U save D.Init ptr
  comb set carry
+ tst D.BOOT Booted before?
+ bne BOOTXX
+ inc D.BOOT Mark boot attempted
  ldd BOOTSTR,U Get default device string
  beq BOOTXX Can't boot without device
  leax D,U Get name ptr
