@@ -6,13 +6,14 @@ ScnCtr equ (Screen+(32*8)+12)
 ScnSpc equ $40+' '
 Scn9 equ $40+'9'
 
-ROMBeg equ $F000
-ROMSize equ $0F00
+ROMBeg equ $EF00
+ROMSize equ $0F80
 
  org $0000
 
 INIT fcb 'O','S' sentinel
- fdb $260C
+ bra Entry
+ fdb $1204
 
 Splash fcb 'O','S' splash message
  fcb Scn9,ScnSpc
@@ -40,15 +41,16 @@ ClrScn sta ,X+
 
 * Display splash msg
  ldx #ScnCtr addr of screen center
- leay Splash,PCR msg
+ leay <Splash,PCR msg
  ldb #(SplashX-Splash) size
 CpySpl lda ,Y+
  sta ,X+
  decb
  bne CpySpl
 
- tst D.CBStrt+1 warm start?
- beq GoWarm
+ ldd #$1212 nop opcodes
+ cmpd D.CBStrt+7 warm start?
+ beq Warm2
 
 * Copy OS9 to "ROM" area
  leau INIT,PCR addr of this code
@@ -61,7 +63,7 @@ CpyROM lda ,U+
 
 * Continue at relocated address
 GoWarm jmp Warm2+ROMBeg
-Warm2 leax OS9Beg,PCR OS9 mod follows immed
+Warm2 leax <OS9Beg,PCR OS9 mod follows immed
  ldd M$Exec,X entry offset
  jmp D,X go at entry addr
 OS9Beg equ *
