@@ -40,7 +40,7 @@ ClrScn sta ,X+
 
 * Display splash msg
  ldx #ScnCtr addr of screen center
- leay Splash,PCR msg
+ leay <Splash,PCR msg
  ldb #(SplashX-Splash) size
 CpySpl lda ,Y+
  sta ,X+
@@ -61,7 +61,7 @@ CpyROM lda ,U+
 
 * Continue at relocated address
 GoWarm jmp Warm2+ROMBeg
-Warm2 leax OS9Beg,PCR OS9 mod follows immed
+Warm2 leax <OS9Beg,PCR OS9 mod follows immed
  ldd M$Exec,X entry offset
  jmp D,X go at entry addr
 OS9Beg equ *
