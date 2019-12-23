@@ -4,19 +4,19 @@ Screen equ $8000
 ScnSize equ 512
 ScnCtr equ (Screen+(32*8)+12)
 ScnSpc equ $40+' '
-Scn9 equ $40+'9'
+Scn9 equ $40+'9
 
 ROMBeg equ $F000
 ROMSize equ $0F00
 
  org $0000
 
-INIT fcb 'O','S' sentinel
+INIT fcb 'O,'S sentinel
  fdb $260C
 
-Splash fcb 'O','S' splash message
+Splash fcb 'O,'S splash message
  fcb Scn9,ScnSpc
- fcb 'B','O','O','T'
+ fcb 'B,'O,'O,'T
 SplashX equ *
 
 Entry CLR $FF03 vertical sync control
@@ -40,7 +40,7 @@ ClrScn sta ,X+
 
 * Display splash msg
  ldx #ScnCtr addr of screen center
- leay Splash,PCR msg
+ leay <Splash,PCR msg
  ldb #(SplashX-Splash) size
 CpySpl lda ,Y+
  sta ,X+
@@ -61,7 +61,7 @@ CpyROM lda ,U+
 
 * Continue at relocated address
 GoWarm jmp Warm2+ROMBeg
-Warm2 leax OS9Beg,PCR OS9 mod follows immed
+Warm2 leax <OS9Beg,PCR OS9 mod follows immed
  ldd M$Exec,X entry offset
  jmp D,X go at entry addr
 OS9Beg equ *
