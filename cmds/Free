@@ -14,8 +14,10 @@
 *  #   date       comments
 * -- -------- ------------------------------------------------------
 *  4 ??/??/?? Buffered Bitmap sector I/O.
+*  5 83/01/13 Added quotes around disk name
+*  6 83/04/01 Increased Bitmap buffer from 256 to 4096 bytes
 
-Edition equ 4 current edition number
+Edition equ 6 current edition number
  use defsfile
 
 **********
@@ -40,7 +42,7 @@ C$COMA set ',
 C$SLSH set '/
 C$COLN set ':
 C$DISK set '@
-BITBUFSZ equ 256 bitmap buffer size
+BITBUFSZ equ 4096 bitmap buffer size
 
 **********
 * Static Storage Offsets
@@ -67,8 +69,8 @@ USAGE fcb C$LF
  fcc "  tells how many disk sectors are unused"
  fcb C$CR
 USAGSZ equ *-USAGE
-CREATE equ *
- fcs "created on:"
+CREATE fcb '"
+ fcs " created on:"
 CAPCTY fcs "Capacity:"
 SECTRS fcs " sectors ("
 CLUSTR fcs "-sector clusters)"
@@ -120,10 +122,13 @@ FREE30 lda #C$DISK Add "open disk" character
 FREE35 lbcs FREE90 ..error; exit
 
  lbsr FREOL Print blank line
+ lda #'" get quote char
+ lbsr FROCHR insert leading quote
  leay DSKBUF+DD.NAM,U
  lda #'?+$80
  sta NAMLIM,U insure good end of name mark
  lbsr FRNAME Put disk name in i/o buffer
+ dec LINPOS+1 eliminate trailing space
  leay CREATE,PCR
  lbsr FRNAME Put "created" in i/o buffer
  lbsr FRDATE Put create date in buffer
@@ -160,12 +165,16 @@ FREE35 lbcs FREE90 ..error; exit
  ldu #MAPOFF
  OS9 I$SEEK Seek to bitmap
  puls U
- leax BITBUFF+BITBUFSZ,U
- stx BMAPEND
 
-FREE40 lda DSKPTH
- leax BITBUFF,U Bitmap Buffer ptr
- ldy #BITBUFSZ
+FREE40 leax BITBUFF,U Bitmap Buffer ptr
+ ldd #BITBUFSZ
+ cmpd DSKBUF+DD.MAP
+ bls FREE42
+ ldd DSKBUF+DD.MAP
+FREE42 leay D,X
+ sty BMAPEND
+ tfr D,Y
+ lda DSKPTH
  OS9 I$READ Read one sector of bitmap
  bcs FREE90 ..error; exit
 FREE45 lda ,X+
