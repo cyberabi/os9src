@@ -1,4 +1,4 @@
- nam SysGo CoCo 1.00.00
+ nam SysGo CoCo 2.00.00
  ttl SysGo - system bootstrap startup module
 
 * Copyright 1980 by Motorola, Inc., and Microware Systems Corp.,
@@ -25,7 +25,7 @@ Revs set REENT+1
  mod CldEnd,CldNam,Type,Revs,CldEnt,CldMem
 CldNam fcs /SysGo/
 
- fcb 5 Edition number
+ fcb 12 Edition number
 
  ifeq CPUType-Color
  rmb 200
@@ -36,28 +36,28 @@ CldNam fcs /SysGo/
 CldMem equ .
 
 MOTD equ *
- fcc "         OS-9 LEVEL ONE"
+ fcc "OS-9 LEVEL ONE VR. 02.00.00"
  fcb $0d,$0a
- fcc "      RS VERSION 01.00.00"
+ fcc "COPR. 1980 BY MOTOROLA INC. AND"
  fcb $0d,$0a
- fcc "COPYRIGHT 1980 BY MOTOROLA INC."
+ fcc "MICROWARE SYSTEMS CORP."
  fcb $0d,$0a
- fcc "  AND MICROWARE SYSTEMS CORP."
+ fcc "LICENSED TO TANDY CORP."
  fcb $0d,$0a
- fcc "   REPRODUCED UNDER LICENSE"
- fcb $0d,$0a
- fcc "       TO TANDY CORP."
- fcb $0d,$0a
- fcc "    ALL RIGHTS RESERVED."
+ fcc "ALL RIGHTS RESERVED."
  fcb $0d,$0a,$0a
 MOTDEnd equ *
 
+HDStr fcc "/H0"
+ fcb $D
+HDDir fcc "/H0/"
 DirStr fcc "Cmds"
  fcb $D
  fcc ",,,,,,,,,," room for patch
 CMDSTR fcc "Shell"
  fcb $D
- fcc ",,,,,,,,,," room for patch
+ fcc "TSMON"
+ fcb $D
 SHLFUN fcc "STARTUP -P"
  fcb $D
  fcc ",,,,,,,,,," room for patch
@@ -65,13 +65,16 @@ FUNSIZ equ *-SHLFUN
 
 
  ifeq CPUType-Color
+SysTime fcb 85,6,1,0,0,0 default system time
 WarmVec fcb $55 sentinel
- fcb $00 non-zero if warm start
+ fcb $00
  fcb $74
  nop
  clr $FF03 Vertical sync control 
+ nop two bytes nop if warm start
+ nop
  sta $FFDF upper 32K ram
- jmp $F00C run boot code loaded from disk
+ jmp $EF0E run boot code loaded from disk
 WVEnd equ *
  endc
 
@@ -91,12 +94,27 @@ CldEnt1 lda ,X+
  ldy #(MOTDEnd-MOTD) get length
  lda #1 standard out
  OS9 I$WRITE 
+ leax SysTime,PCR
+ OS9 F$STime
  endc
 
  leax DirStr,PCR Get directory name ptr
  lda #EXEC. Get execution mode
  OS9 I$ChgDir Change execution directory
 * NOTE: do not test for error, at least system will boot
+ ifeq CPUType-Color
+ leax HDStr,PCR Try for hard disk on h0
+ lda #READ.+WRITE.
+ OS9 I$ChgDir
+ bcs NOHD
+ leax HDDir,PCR HD execution directory
+ lda #EXEC. Get execution mode
+ OS9 I$ChgDir
+ bcc NOHD
+NOHD OS9 F$ID Get proc id
+ ldb #$80 use medium priority
+ OS9 F$SPRIOR
+ endc
  leax CMDSTR,PCR Get ptr to "shell"
  leau SHLFUN,PCR Get ptr to startup file name
  ldd #OBJCT*256 Get type
