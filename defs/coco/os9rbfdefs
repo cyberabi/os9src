@@ -4,15 +4,21 @@
 ***************
 * Modification History
 
-* 82/07/13   PD.Exten added to path descriptor by RFD.
-* 82/07/13   PE entries defined                by RFD.
-* 82/07/15   V.FileHd inserted in drive static by RFD.
-* 82/09/10   Level One/ Level two cond added   by WGP.
-* 82/09/17   Record Lock cond added            by WGP.
-* 82/09/17   PD.SLE renamed to PD.Creat        by RFD.
+* 82/07/13   PD.Exten added to path descriptor              rfd
+* 82/07/13   PE entries defined                             rfd
+* 82/07/15   V.FileHd inserted in drive static              rfd
+* 82/09/10   Level One/ Level two cond added                WGP
+* 82/09/17   Record Lock cond added                         WGP
+* 82/09/17   PD.SLE renamed to PD.Creat                     rfd
 * 82/09/17   V.DiskID, V.BMapSz, V.MapSct added for smart
-*               multi-sector bitmap searching by RFD.
+*               multi-sector bitmap searching by            rfd
 * 82/09/20   reserved areas added in static storage.
+* 83/06/07   Added InDriver flag in PD.SMF.                 rfd
+* 83/06/13   Added PE.Req tmp save for PE.Lock              rfd
+* 83/08/08   reserved PD.SToff for Japanese                 rfd
+* 83/11/19   Added V.ResBit in drive tables.                rfd
+* 83/12/12   Added PE.Prior to save process priority.       rfd
+* 83/12/13   Added BufBusy bit in state flag (PD.SMF)       rfd
 
  pag
 ************************************************************
@@ -43,7 +49,7 @@ PD.ILV rmb 1 Sector interleave offset
 PD.SAS rmb 1 Segment allocation size
 PD.TFM rmb 1 DMA Transfer Mode
 PD.Exten rmb 2 Path Extension (PE) for record locking
- rmb PDSIZE-.-13
+PD.SToff rmb 1 Sector/Track offsets (for "foreign" disk formats)
 PD.ATT rmb 1 File attributes
 PD.FD rmb 3 File descriptor psn
 PD.DFD rmb 3 Directory file descriptor psn
@@ -51,34 +57,13 @@ PD.DCP rmb 4 File directory entry ptr
 PD.DVT rmb 2 User readable dev tbl ptr
 
 * State Flags
-BUFMOD equ 1 Buffer modified
-SINBUF equ 2 Sector in buffer
-FDBUF equ 4 File descriptor in buffer
-EOFSEC equ 8 End of file sector
-EOF equ 16 End of file
-
- ifne LEVEL-1
-**************************************************
-* Random Block Path Extension Format
-
- org 0
-PE.PE rmb 1 PE path number
-PE.PDptr rmb 2 back ptr to this PE's Path Descriptor
-PE.NxFil rmb 2 Drive Open-File list ptr
-PE.Confl rmb 2 circular File Conflict list
-PE.Lock rmb 1 Path lockout status
-PE.LoLck rmb 4 Low  Locked Logical addr
-PE.HiLck rmb 4 High Locked Logical addr
-PE.Wait rmb 2 PE ptr to (next) locked-out PE
-PE.TmOut rmb 2 Max ticks to wait for locked segment
-PE.Owner rmb 1 Process ID of owner of locked segment
-
-* PE.Lock status codes
-Unlocked equ 0 no portion of file is locked
-RcdLock  equ 1 record from LoLck to HiLck locked
-FileLock equ 2 entire file locked
-EofLock equ 4 End of file is locked
- endc
+BUFMOD equ $01 Buffer modified
+SINBUF equ $02 Sector in buffer
+FDBUF equ  $04 File descriptor in buffer
+*EOFSEC equ $08 End of file sector
+*EOF equ $10 End of file
+InDriver equ $20 Currently in Disk Driver, or queued
+BufBusy equ $40 Buffer is currently busy
 
 *
 * Device Descriptor Format
@@ -169,7 +154,8 @@ V.FileHd rmb 2 open file list for this drive
 V.DiskID rmb 2 Disk ID
 V.BMapSz rmb 1 Bitmap Size
 V.MapSct rmb 1 lowest reasonable bitmap sector
- rmb 8 reserved
+V.ResBit rmb 1 reserved bitmap sector (for compaction)
+ rmb 7 reserved
 DRVMEM equ .
 
  opt l

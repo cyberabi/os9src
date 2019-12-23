@@ -55,6 +55,10 @@ D.DskTmr rmb 2 Disk Motor Timer (CC)
 D.CBStrt rmb 16 Reserved for CC warmstart ($71)
 D.Clock rmb 2 Address of Clock Tick Routine (CC)
 
+D.Boot rmb 1 Bootstrap attempted flag
+D.URtoSs rmb 2 address of user to system routine (VIRQ)
+D.CLTB rmb 2 Pointer to clock interrupt table (VIRQ)
+
 * TABLE SIZES
 
 BMAPSZ equ 32 BIT MAP SIZE
@@ -94,6 +98,7 @@ P$PATH rmb NumPaths I/O path table
 P$Signal rmb 1 Signal Code
 P$SigVec rmb 2 Signal Intercept Vector
 P$SigDat rmb 2 Signal Intercept Data Address
+P$NIO rmb 4 additional dio pointers for net
  rmb $40-. unused
 P$Size equ . Size of Process Descriptor
 

@@ -1,5 +1,5 @@
 
- nam OS-9 Level I CoCo 1.00.00 kernal, part 1
+ nam OS-9 Level I CoCo 2.00.00 kernal, part 1
  ttl System Type definitions
 
  use defsfile
@@ -46,7 +46,7 @@ OS9Nam fcs /OS9/
  else
 OS9Nam fcs /OS9p1/
  endc
- fcb 12 Edition number
+ fcb 14 Edition number
 
 *************************
 *    Edition History
@@ -73,13 +73,16 @@ OS9Nam fcs /OS9p1/
 *          Undid RETCS1 change
 *          No vector table output or padding (not ROMable)
 *                                                      CJB  12/09/19
+*
+* Ed. 14 - Changes to match Color Computer V2.00.00
+*                                                      CJB  12/21/19
 
 *********
 * Version Id
 *
  ifeq CPUType-Color
  fcc /CC/ Version name
-RamLimit set $F000
+RamLimit set $EF00
  endc
  ifeq CPUType-Exorsr
  fcc / Exor / Version name
@@ -327,6 +330,10 @@ COLD45 ldd ,Y++ get vector
  cmpx #D.NMI end of dp vectors?
  bls COLD45 branch if not
  leas 2,S return scratch
+ ifeq CPUType-Color
+ leax SWITCH,PCR
+ stx D.URtoSs
+ endc
  leax USRIRQ,PCR Get user interrupt routine
  stx D.UsrIRQ
  leax USRREQ,PCR Get user service routine
@@ -343,6 +350,7 @@ COLD45 ldd ,Y++ get vector
  ifeq CPUType-Color
  leax TICK,PCR Get clock service routine
  stx D.CLOCK CoCo 0081
+ stx D.AltIRQ
  endc
 
 *
@@ -1078,6 +1086,10 @@ FORK ldx D.PrcDBT Get process block ptr
  ldb #SysState Get system state flag
  stb P$State,Y Set infant state
  sty D.PROC Make child current process
+ ldd P$NIO+0,X network hooks
+ std P$NIO+0,Y
+ ldd P$NIO+2,X
+ std P$NIO+2,Y
 *
 * Pass I/O Defaults & Paths 0, 1, And 2
 *    From Parent To Child

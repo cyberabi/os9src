@@ -1,5 +1,33 @@
  opt -l
  ttl OS-9 System Symbol Definitions
+
+***************
+* Edition History
+
+*   Date    Changes Made
+* -------- ----------------------------------------------
+* 83/03/01 Six new Status codes added: SS.BlkRd - SS.ELog
+* 83/03/08 New status code added: SS.SSig
+* 83/04/21 added new F$ call for 7 day clock function
+*          for com-trol level II.
+* 83/05/04 F$GCMDir service request added for NCM  by  WGP
+* 83/06/29 Added ProtFlag to init module offsets
+* 83/10/12 Added SS.AlfaS for coco  MGH
+* 83/10/28 Added SS.Break for ACIA Break command RES
+* 83/11/19 Added SS.RsBit to reserve (not allocate in) bitmap sector
+* 84/02/17 Added reserved status codes for Hoshi and Gimix
+* 84/03/07 Added SS.Cursr and SS.ScSiz for Coco MGH
+*          Added New signal code S$Window .. coco future MGH
+* 84/04/11 Addes SS.Sound for COCO                       MGH
+* 84/06/05 Added label SS.SetMF to Gimix Reserved byte   MGH
+* 85/03/04 Changed SS.Sound to SS.KySns                  MGH
+* 85/04/28 Added SS.ComSt Communication Set (Parity,Baud)MGH
+* 85/05/02 Added F$VIRQ for Virtual IRQ                  TAH
+* 85/05/30 Added SS.Open,SS.Close,SS.HngUP               MGH
+* 85/06/01 Added E$HangUp error for CDC Lost             MGH
+* 85/06/03 Added DT.NFM device type                      DJN
+* 85/06/20 Added SS.AAGBf, SS.SLGBf                      MGH
+
  pag
 ************************************************************
 *
@@ -36,7 +64,12 @@ F$GModDr rmb 1 get Module Directory copy
 F$CpyMem rmb 1 Copy External Memory
 F$SUser rmb 1 Set User ID number
 F$UnLoad rmb 1 Unlink Module by name
- ORG $28 Beginning of System Reserved Calls
+*F$Ctime rmb 1 Com-Trol clock read
+*F$Cstime rmb 1 Com-Trol set time
+*F$CTswi2 rmb 1 Com-Trol double postbyte swi2
+ rmb 3 reserved - see above
+ ORG $27 Beginning of System Reserved Calls
+F$VIRQ rmb 1 Install/Delete Virtual IRQ
 F$SRqMem rmb 1 System Memory Request
 F$SRtMem rmb 1 System Memory Return
 F$IRQ rmb 1 Enter IRQ Polling Table
@@ -66,7 +99,9 @@ F$SetTsk rmb 1 Set Process Task DAT registers
 F$ResTsk rmb 1 Reserve Task number
 F$RelTsk rmb 1 Release Task number
 F$DATLog rmb 1 Convert DAT Block/Offset to Logical
+***** With non-contiguous modules this system call will become obsolete
 F$DATTmp rmb 1 Make temporary DAT image
+*****
 F$LDAXY rmb 1 Load A [X,[Y]]
 F$LDAXYP rmb 1 Load A [X+,[Y]]
 F$LDDDXY rmb 1 Load D [D+X,[Y]]
@@ -79,6 +114,7 @@ F$FModul rmb 1 Find Module Directory Entry
 F$MapBlk rmb 1 Map Specific Block
 F$ClrBlk rmb 1 Clear Specific Block
 F$DelRAM rmb 1 Deallocate RAM blocks
+F$GCMDir rmb 1 Pack module directory
  pag
 ************************************************************
 *
@@ -103,20 +139,6 @@ I$SetStt rmb 1 Set Path Status
 I$Close rmb 1 Close Path
 I$DeletX rmb 1 Delete from current exec dir
 
-
-************************************************************
-*
-*      File Access Modes
-*
-READ. equ %00000001
-WRITE. equ %00000010
-UPDAT. equ READ.+WRITE.
-EXEC. equ %00000100
-PREAD. equ %00001000
-PWRIT. equ %00010000
-PEXEC. equ %00100000
-SHARE. equ %01000000
-DIR. equ %10000000
  pag
 ************************************************************
 *
@@ -127,7 +149,7 @@ S$Kill rmb 1 Non-Interceptable Abort
 S$Wake rmb 1 Wake-up Sleeping Process
 S$Abort rmb 1 Keyboard Abort
 S$Intrpt rmb 1 Keyboard Interrupt
-
+S$Window rmb 1 Window Change
 
 
 ************************************************************
@@ -155,6 +177,97 @@ SS.Ticks rmb 1 Set Lockout honor duration
 SS.Lock rmb 1 Lock/Release record
 SS.DStat rmb 1 Return Display Status (CoCo)
 SS.Joy rmb 1 Return Joystick Value (CoCo)
+SS.BlkRd rmb 1 Block Read
+SS.BlkWr rmb 1 Block Write
+SS.Reten rmb 1 Retension cycle
+SS.WFM rmb 1 Write File Mark
+SS.RFM rmb 1 Read past File Mark
+SS.ELog rmb 1 Read Error Log
+SS.SSig rmb 1 Send signal on data ready
+SS.Relea rmb 1 Release device
+SS.AlfaS rmb 1 Return Alfa Display Status (CoCo)
+SS.Break rmb 1 Send break signal out acia
+SS.RsBit rmb 1 Reserve bitmap sector (do not allocate in) LSB(X)=sct#
+ rmb 1 reserved
+ rmb 4 reserve $20-$23 for Japanese version (Hoshi)
+SS.SetMF rmb 1 reserve $24 for Gimix G68 (Flex compatability?)
+SS.Cursr rmb 1 Cursor information for COCO
+SS.ScSiz rmb 1 Return screen size for COCO
+SS.KySns rmb 1 Getstat/Putstat for COCO keyboard
+SS.ComSt rmb 1 Getstat/Putstat for Baud/Parity
+SS.Open rmb 1 Putstat to tell driver a path was opened
+SS.Close rmb 1 Putstat to tell driver a path was closed
+SS.HngUp rmb 1 Putstat to tell driver to hangup phone
+* System Specific and User defined codes above $80
+ org 80 
+SS.AAGBf rmb 1 Putstat to Allocate Additional Graphic Buffer
+SS.SLGBf rmb 1 Putstat to Select a different Graphic Buffer
+
+ ttl Direct Page Definitions
+ page
+************************************************************
+*
+*     Direct Page Variable Definitions
+*
+ org $20 reserve first 32 bytes
+D.FMBM rmb 4 Free memory bit map pointers
+D.MLIM rmb 2 Memory limit
+D.ModDir rmb 4 Module directory
+D.Init rmb 2 Rom base address
+D.SWI3 rmb 2 Swi3 vector
+D.SWI2 rmb 2 Swi2 vector
+D.FIRQ rmb 2 Firq vector
+D.IRQ rmb 2 Irq vector
+D.SWI rmb 2 Swi vector
+D.NMI rmb 2 Nmi vector
+D.SvcIRQ rmb 2 Interrupt service entry
+D.Poll rmb 2 Interrupt polling routine
+D.UsrIRQ rmb 2 User irq routine
+D.SysIRQ rmb 2 System irq routine
+D.UsrSvc rmb 2 User service request routine
+D.SysSvc rmb 2 System service request routine
+D.UsrDis rmb 2 User service request dispatch table
+D.SysDis rmb 2 System service reuest dispatch table
+D.Slice rmb 1 Process time slice count
+D.PrcDBT rmb 2 Process descriptor block address
+D.Proc rmb 2 Process descriptor address
+D.AProcQ rmb 2 Active process queue
+D.WProcQ rmb 2 Waiting process queue
+D.SProcQ rmb 2 Sleeping process queue
+D.Time equ . Time
+D.Year rmb 1
+D.Month rmb 1
+D.Day rmb 1
+D.Hour rmb 1
+D.Min rmb 1
+D.Sec rmb 1
+D.Tick rmb 1
+D.TSec rmb 1 Ticks / second
+D.TSlice rmb 1 Ticks / time-slice
+D.IOML rmb 2 I/O mgr free memory low bound
+D.IOMH rmb 2 I/O mgr free memory hi  bound
+D.DevTbl rmb 2 Device driver table addr
+D.PolTbl rmb 2 Irq polling table addr
+D.PthDBT rmb 2 Path descriptor block table addr
+D.BTLO rmb 2 Bootstrap low address
+D.BTHI rmb 2 Bootstrap hi address
+D.DMAReq rmb 1 DMA in use flag
+
+D.AltIRQ rmb 2 Alternate IRQ vector (CC)
+D.KbdSta rmb 2 Keyboard scanner static storage (CC)
+D.DskTmr rmb 2 Disk Motor Timer (CC)
+D.CBStrt rmb 16 reserved for CC warmstart ($71)
+D.Clock rmb 2 Address of Clock Tick Routine (CC)
+
+D.Boot rmb 1 Bootstrap attempted flag
+D.URtoSs rmb 2 address of user to system routine (VIRQ)
+D.CLTB rmb 2 Pointer to clock interrupt table (VIRQ)
+
+* TABLE SIZES
+
+BMAPSZ equ 32 BIT MAP SIZE
+SVCTNM equ 2 NUMBER OF SERVICE REQUEST TABLES
+SVCTSZ equ (256-BMAPSZ)/SVCTNM-2 SERVICE REQUEST TABLE SIZE
 
 
  ttl Structure Formats
@@ -208,6 +321,7 @@ InitStr rmb 2 Initial Module Name
 SysStr rmb 2 System Device Name
 StdStr rmb 2 Standard I/O Pathlist
 BootStr rmb 2 Bootstrap Module name
+ProtFlag rmb 1 Write protect enable flag
  pag
 ************************************************************
 *
@@ -256,116 +370,67 @@ RevsMask equ %00001111 Revision Level Field
 *   Attribute Flags
 *
 ReEnt equ %10000000 Re-Entrant Module
+Modprot equ %01000000 Gimix Module protection bit
+*                     0=protected, 1=write enable
+
 *
 *   Device Type Values
 *
 DT.SCF equ 0 Sequential Character File Type
 DT.RBF equ 1 Random Block File Type
 DT.Pipe equ 2 Pipe File Type
+DT.NFM equ 3 Network File Manager Type
 *
 *   CRC Result Constant
 *
 CRCCon1 equ $80
 CRCCon23 equ $0FE3
- pag
+ page
 ************************************************************
 *
-*   Machine Characteristics Definitions
+*     Process Descriptor Definitions
 *
-R$CC equ 0 Condition Codes register
-R$A equ 1 A Accumulator
-R$B equ 2 B Accumulator
-R$D equ R$A Combined A:B Accumulator
-R$DP equ 3 Direct Page register
-R$X equ 4 X Index register
-R$Y equ 6 Y Index register
-R$U equ 8 User Stack register
-R$PC equ 10 Program Counter register
-R$Size equ 12 Total register package size
+DefIOSiz equ 12
+NumPaths equ 16 Number of Local Paths
 
-Entire equ %10000000 Full Register Stack flag
-FIRQMask equ %01000000 Fast-Interrupt Mask bit
-HalfCrry equ %00100000 Half Carry flag
-IRQMask equ %00010000 Interrupt Mask bit
-Negative equ %00001000 Negative flag
-Zero equ %00000100 Zero flag
-TwosOvfl equ %00000010 Two's Comp Overflow flag
-Carry equ %00000001 Carry bit
-IntMasks equ IRQMask+FIRQMask
-Sign equ %10000000 sign bit
+ ORG 0
+P$ID rmb 1 Process ID
+P$PID rmb 1 Parent's ID
+P$SID rmb 1 Sibling's ID
+P$CID rmb 1 Child's ID
+P$SP rmb 2 Stack ptr
+P$CHAP rmb 1 process chapter number
+P$ADDR rmb 1 user address beginning page number
+P$PagCnt rmb 1 Memory Page Count
+P$User rmb 2 User Index
+P$Prior rmb 1 Priority
+P$Age rmb 1 Age
+P$State rmb 1 Status
+P$Queue rmb 2 Queue Link (Process ptr)
+P$IOQP rmb 1 Previous I/O Queue Link (Process ID)
+P$IOQN rmb 1 Next     I/O Queue Link (Process ID)
+P$PModul rmb 2 Primary Module
+P$SWI rmb 2 SWI Entry Point
+P$SWI2 rmb 2 SWI2 Entry Point
+P$SWI3 rmb 2 SWI3 Entry Point
+P$DIO rmb DefIOSiz default I/O ptrs
+P$PATH rmb NumPaths I/O path table
+P$Signal rmb 1 Signal Code
+P$SigVec rmb 2 Signal Intercept Vector
+P$SigDat rmb 2 Signal Intercept Data Address
+P$NIO rmb 4 additional dio pointers for net
+ rmb $40-. unused
+P$Size equ . Size of Process Descriptor
 
-true equ 1 useful name
-false equ 0 useful name
-
-
- ttl Error Code Definitions
-  pag
-************************************************************
+************************
+*   Process State Flags
 *
-*     Error Code Definitions
-*
- org 200
-E$PthFul rmb 1 Path Table full
-E$BPNum rmb 1 Bad Path Number
-E$Poll rmb 1 Polling Table Full
-E$BMode rmb 1 Bad Mode
-E$DevOvf rmb 1 Device Table Overflow
-E$BMID rmb 1 Bad Module ID
-E$DirFul rmb 1 Module Directory Full
-E$MemFul rmb 1 Process Memory Full
-E$UnkSvc rmb 1 Unknown Service Code
-E$ModBsy rmb 1 Module Busy
-E$BPAddr rmb 1 Bad Page Address
-E$EOF rmb 1 End of File
- rmb 1
-E$NES rmb 1 Non-Existing Segment
-E$FNA rmb 1 File Not Accesible
-E$BPNam rmb 1 Bad Path Name
-E$PNNF rmb 1 Path Name Not Found
-E$SLF rmb 1 Segment List Full
-E$CEF rmb 1 Creating Existing File
-E$IBA rmb 1 Illegal Block Address
- rmb 1
-E$MNF rmb 1 Module Not Found
- rmb 1
-E$DelSP rmb 1 Deleting Stack Pointer memory
-E$IPrcID rmb 1 Illegal Process ID
- rmb 1
-E$NoChld rmb 1 No Children
-E$ISWI rmb 1 Illegal SWI code
-E$PrcAbt rmb 1 Process Aborted
-E$PrcFul rmb 1 Process Table Full
-E$IForkP rmb 1 Illegal Fork Parameter
-E$KwnMod rmb 1 Known Module
-E$BMCRC rmb 1 Bad Module CRC
-E$USigP rmb 1 Unprocessed Signal Pending
-E$NEMod rmb 1 Non Existing Module
-
-E$BNam rmb 1 Bad Name
-E$BMHP rmb 1 (bad module header parity)
-E$NoRam rmb 1 No Ram Available
-E$BPrcID rmb 1 Bad Process ID
-E$NoTask rmb 1 No available Task number
-
- rmb $F0-. reserved
-
-E$Unit rmb 1 Illegal Unit (drive)
-E$Sect rmb 1 Bad SECTor number
-E$WP   rmb 1 Write Protect
-E$CRC  rmb 1 Bad Check Sum
-E$Read rmb 1 Read Error
-E$Write rmb 1 Write Error
-E$NotRdy rmb 1 Device Not Ready
-E$Seek rmb 1 Seek Error
-E$Full rmb 1 Media Full
-E$BTyp rmb 1 Bad Type (incompatable) media
-E$DevBsy rmb 1 Device Busy
-E$DIDC rmb 1 Disk ID Change
-E$Lock rmb 1 Record is busy (locked out)
-E$Share rmb 1 Non-sharable file busy
-E$DeadLk rmb 1 I/O Deadlock error
-
-
+SysState equ %10000000
+TimSleep equ %01000000
+TimOut equ %00100000
+ImgChg equ %00010000
+Condem equ %00000010
+Dead equ %00000001
  page
 ************************************************************
 *
@@ -392,6 +457,22 @@ PDSIZE equ .
 PDELIM equ '/ Pathlist Name Separator
 PDIR equ '. Directory
 PENTIR equ '@ Entire Device
+
+
+************************************************************
+*
+*      File Access Modes
+*
+READ. equ %00000001
+WRITE. equ %00000010
+UPDAT. equ READ.+WRITE.
+EXEC. equ %00000100
+PREAD. equ %00001000
+PWRIT. equ %00010000
+PEXEC. equ %00100000
+SHARE. equ %01000000
+DIR. equ %10000000
+
  page
 ************************************************************
 *
@@ -467,226 +548,115 @@ POLSIZ equ .
 
 
 
- opt l
- opt -l
- ttl Direct Page Definitions
- page
-************************************************************
+***********************************************************
 *
-*     Direct Page Variable Definitions
+*     VIRQ packet format
 *
- org $20 reserve first 32 bytes
-
-D.FMBM rmb 4 Free memory bit map pointers
-D.MLIM rmb 2 Memory limit
-D.ModDir rmb 4 Module directory
-D.Init rmb 2 Rom base address
-D.SWI3 rmb 2 Swi3 vector
-D.SWI2 rmb 2 Swi2 vector
-D.FIRQ rmb 2 Firq vector
-D.IRQ rmb 2 Irq vector
-D.SWI rmb 2 Swi vector
-D.NMI rmb 2 Nmi vector
-D.SvcIRQ rmb 2 Interrupt service entry
-D.Poll rmb 2 Interrupt polling routine
-D.UsrIRQ rmb 2 User irq routine
-D.SysIRQ rmb 2 System irq routine
-D.UsrSvc rmb 2 User service request routine
-D.SysSvc rmb 2 System service request routine
-D.UsrDis rmb 2 User service request dispatch table
-D.SysDis rmb 2 System service reuest dispatch table
-D.Slice rmb 1 Process time slice count
-D.PrcDBT rmb 2 Process descriptor block address
-D.Proc rmb 2 Process descriptor address
-D.AProcQ rmb 2 Active process queue
-D.WProcQ rmb 2 Waiting process queue
-D.SProcQ rmb 2 Sleeping process queue
-D.Time equ . Time
-D.Year rmb 1
-D.Month rmb 1
-D.Day rmb 1
-D.Hour rmb 1
-D.Min rmb 1
-D.Sec rmb 1
-D.Tick rmb 1
-D.TSec rmb 1 Ticks / second
-D.TSlice rmb 1 Ticks / time-slice
-D.IOML rmb 2 I/O mgr free memory low bound
-D.IOMH rmb 2 I/O mgr free memory hi  bound
-D.DevTbl rmb 2 Device driver table addr
-D.PolTbl rmb 2 Irq polling table addr
-D.PthDBT rmb 2 Path descriptor block table addr
-D.BTLO rmb 2 Bootstrap low address
-D.BTHI rmb 2 Bootstrap hi address
-D.DMAReq rmb 1 DMA in use flag
-D.AltIRQ rmb 2 Alternate IRQ vector (CC)
-D.KbdSta rmb 2 Keyboard scanner static storage (CC)
-D.DskTmr rmb 2 Disk Motor Timer (CC)
-D.CBStrt rmb 16 Reserved for CC warmstart ($71)
-D.Clock rmb 2 Address of Clock Tick Routine (CC)
-
-* TABLE SIZES
-
-BMAPSZ equ 32 BIT MAP SIZE
-SVCTNM equ 2 NUMBER OF SERVICE REQUEST TABLES
-SVCTSZ equ (256-BMAPSZ)/SVCTNM-2 SERVICE REQUEST TABLE SIZE
-
- page
-************************************************************
-*
-*     Process Descriptor Definitions
-*
-DefIOSiz equ 12
-NumPaths equ 16 Number of Local Paths
-
  ORG 0
-P$ID rmb 1 Process ID
-P$PID rmb 1 Parent's ID
-P$SID rmb 1 Sibling's ID
-P$CID rmb 1 Child's ID
-P$SP rmb 2 Stack ptr
-P$CHAP rmb 1 process chapter number
-P$ADDR rmb 1 user address beginning page number
-P$PagCnt rmb 1 Memory Page Count
-P$User rmb 2 User Index
-P$Prior rmb 1 Priority
-P$Age rmb 1 Age
-P$State rmb 1 Status
-P$Queue rmb 2 Queue Link (Process ptr)
-P$IOQP rmb 1 Previous I/O Queue Link (Process ID)
-P$IOQN rmb 1 Next     I/O Queue Link (Process ID)
-P$PModul rmb 2 Primary Module
-P$SWI rmb 2 SWI Entry Point
-P$SWI2 rmb 2 SWI2 Entry Point
-P$SWI3 rmb 2 SWI3 Entry Point
-P$DIO rmb DefIOSiz default I/O ptrs
-P$PATH rmb NumPaths I/O path table
-P$Signal rmb 1 Signal Code
-P$SigVec rmb 2 Signal Intercept Vector
-P$SigDat rmb 2 Signal Intercept Data Address
- rmb $40-. unused
-P$Size equ . Size of Process Descriptor
+Vi.Cnt rmb 2 count down counter
+Vi.Rst rmb 2 reset value for counter
+Vi.Stat rmb 1 status byte
 
-*
-*   Process State Flags
-*
-SysState equ %10000000
-TimSleep equ %01000000
-TimOut equ %00100000
-ImgChg equ %00010000
-Condem equ %00000010
-Dead equ %00000001
- page
+Vi.IFlag equ %00000001 status byte virq flag
+
+
+ pag
 ************************************************************
 *
-*     OS-9 Level I Definitions
+*   Machine Characteristics Definitions
 *
-*   Definition of Level I V1.1 symbols 
-*   renamed under Level I V1.2
+R$CC equ 0 Condition Codes register
+R$A equ 1 A Accumulator
+R$B equ 2 B Accumulator
+R$D equ R$A Combined A:B Accumulator
+R$DP equ 3 Direct Page register
+R$X equ 4 X Index register
+R$Y equ 6 Y Index register
+R$U equ 8 User Stack register
+R$PC equ 10 Program Counter register
+R$Size equ 12 Total register package size
+
+Entire equ %10000000 Full Register Stack flag
+FIRQMask equ %01000000 Fast-Interrupt Mask bit
+HalfCrry equ %00100000 Half Carry flag
+IRQMask equ %00010000 Interrupt Mask bit
+Negative equ %00001000 Negative flag
+Zero equ %00000100 Zero flag
+TwosOvfl equ %00000010 Two's Comp Overflow flag
+Carry equ %00000001 Carry bit
+IntMasks equ IRQMask+FIRQMask
+Sign equ %10000000 sign bit
+
+true equ 1 useful name
+false equ 0 useful name
+
+
+ ttl Error Code Definitions
+  pag
+************************************************************
 *
-F$UNLK equ F$Unlink Unlink Module
-F$CHAN equ F$Chain Chain process to new module
-F$SLEP equ F$Sleep Process Sleep
-F$SPRI equ F$SPrior set process priority
-F$PNAM equ F$PrsNam Parse Name
-F$CNAM equ F$CmpNam Compare Two Names
-F$SBIT equ F$SchBit Search Bit Map
-F$ABIT equ F$AllBit Allocate Bit Map
-F$DBIT equ F$DelBit Deallocate Bit Map
-F$STIM equ F$STime set current time
-F$SRQM equ F$SRqMem System Memory Request
-F$SRTM equ F$SRtMem System Memory Return
-F$APRC equ F$AProc enter active process queue
-F$NPRC equ F$NProc start next active process
-F$VMOD equ F$VModul Validate module
-F$F64 equ F$Find64 Find process/path descriptor
-F$A64 equ F$ALL64 allocate process/path descriptor
-F$R64 equ F$Ret64 return process/path descriptor
-F$IODL equ F$IODel delete i/o module
-I$ATCH equ I$Attach device to system
-I$DTCH equ I$Detach device from system
-I$CREA equ I$Create create new file
-I$MDIR equ I$MakDir make directory file
-I$CDIR equ I$ChgDir change default directory
-I$DLET equ I$Delete delete a file
-I$WRIT equ I$Write write data
-I$RDLN equ I$ReadLn read line
-I$WRLN equ I$WritLn write line
-I$GSTT equ I$GetStt get status
-I$SSTT equ I$SetStt set status
-I$CLOS equ I$Close close path
-
-S$ABT equ S$Abort Keyboard abort signal
-S$INTR equ S$Intrpt Keyboard interrupt signal
-
-COBOL equ CblCode COBOL module type
-
-SS.RST equ SS.Reset Reset Device
-SS.WTK equ SS.WTrk Write Track
-SS.SIZ equ SS.Size File size
-SS.FEE equ SS.Feed Form feed
-SS.DCM equ SS.Dcmd Hard disk command
-M$STAK equ M$Mem Module Stack Requirement
-P$PCNT equ P$PagCnt Memory page count
-P$PRIO equ P$Prior Priority
-P$STAT equ P$State Process state
-P$QUEU equ P$Queue Queue link (process ptr)
-P$PMOD equ P$PModul Primary module ptr
-P$SIGN equ P$Signal Process Signal
-P$SIGV equ P$SigVec Signal intercept vector
-P$SIGD equ P$SigDat Signal intercept data address
-E$PTHF equ E$PthFul path table full
-E$IID equ E$BMID Illegal module ID block
-E$DIRF equ E$DirFul Module directory full
-E$MEMF equ E$MemFul Memory full
-E$USVC equ E$UnkSvc Unknown Service Request error
-E$MODB equ E$ModBsy Module busy
-E$RNAM rmb E$EOF+1 returning non-allocated memory
-E$BBND equ E$BPAddr Bad page address
-E$BPN equ E$BPNam bad path name
-E$LNEM equ E$MNF Module not found
-E$DESP equ E$DelSP deleting stack ptr memory
-E$IPID equ E$IPrcID illegal process ID
-E$ISC equ E$IPrcID+1
-E$NOCH equ E$NoChld No children
-E$PRCF equ E$PrcFul Process table full
-E$KMOD equ E$KwnMod Known module
-E$BCRC equ E$BMCRC Bad module CRC
-E$USP equ E$USigP unprocessed signal pending
-E$IFKP equ E$IForkP illegal fork parameter
-E$RD equ E$Read Read error
-E$WR equ E$Write Write error
-E$NRDY equ E$NotRdy Device Not Ready
-REVMSK equ Revsmask
-INISTR equ InitStr
-TYPMSK equ TypeMask
-LANMSK equ LangMask
-IRQM equ IRQMask
-FIRQM equ FIRQMask
-NPATHS equ NumPaths
-SYSTAT equ SysState
-TSLEEP equ TimSleep
-
-***************
+*     Error Code Definitions
 *
-* Defs of Level I V1.1 renamed under V1.2
-*
-D.MODD equ D.ModDir Module directory ptr
-D.BASE equ D.Init ROM base address
-D.ISVC equ D.SvcIRQ Interrupt service entry
-D.UIRQ equ D.UsrIRQ User IRQ routine
-D.SIRQ equ D.SysIRQ System IRQ routine
-D.UREQ equ D.UsrSVC User service request routine
-D.SREQ equ D.SysSVC System service request routine
-D.USVC equ D.UsrDis User svc dispatch table
-D.SSVC equ D.SysDis System svc dispatch table
-D.SLIC equ D.Slice Process time slice count
-D.PRDB equ D.PrcDBT Process Descriptor Block table
-D.APRQ equ D.AProcQ Active process queue ptr
-D.WPRQ equ D.WProcQ Waiting process queue
-D.SPRQ equ D.SProcQ Sleeping process queue ptr
-D.MNTH equ D.Month
-D.TIC equ D.Tick
-D.TSLC equ D.TSlice Ticks / Time-slice
+ org 200
+E$PthFul rmb 1 Path Table full
+E$BPNum rmb 1 Bad Path Number
+E$Poll rmb 1 Polling Table Full
+E$BMode rmb 1 Bad Mode
+E$DevOvf rmb 1 Device Table Overflow
+E$BMID rmb 1 Bad Module ID
+E$DirFul rmb 1 Module Directory Full
+E$MemFul rmb 1 Process Memory Full
+E$UnkSvc rmb 1 Unknown Service Code
+E$ModBsy rmb 1 Module Busy
+E$BPAddr rmb 1 Bad Page Address
+E$EOF rmb 1 End of File
+ rmb 1
+E$NES rmb 1 Non-Existing Segment
+E$FNA rmb 1 File Not Accesible
+E$BPNam rmb 1 Bad Path Name
+E$PNNF rmb 1 Path Name Not Found
+E$SLF rmb 1 Segment List Full
+E$CEF rmb 1 Creating Existing File
+E$IBA rmb 1 Illegal Block Address
+E$HangUp rmb 1 Carrier Detect Lost
+E$MNF rmb 1 Module Not Found
+ rmb 1
+E$DelSP rmb 1 Deleting Stack Pointer memory
+E$IPrcID rmb 1 Illegal Process ID
+ rmb 1
+E$NoChld rmb 1 No Children
+E$ISWI rmb 1 Illegal SWI code
+E$PrcAbt rmb 1 Process Aborted
+E$PrcFul rmb 1 Process Table Full
+E$IForkP rmb 1 Illegal Fork Parameter
+E$KwnMod rmb 1 Known Module
+E$BMCRC rmb 1 Bad Module CRC
+E$USigP rmb 1 Unprocessed Signal Pending
+E$NEMod rmb 1 Non Existing Module
+
+E$BNam rmb 1 Bad Name
+E$BMHP rmb 1 (bad module header parity)
+E$NoRam rmb 1 No Ram Available
+E$BPrcID rmb 1 Bad Process ID
+E$NoTask rmb 1 No available Task number
+
+ rmb $F0-. reserved
+
+E$Unit rmb 1 Illegal Unit (drive)
+E$Sect rmb 1 Bad SECTor number
+E$WP   rmb 1 Write Protect
+E$CRC  rmb 1 Bad Check Sum
+E$Read rmb 1 Read Error
+E$Write rmb 1 Write Error
+E$NotRdy rmb 1 Device Not Ready
+E$Seek rmb 1 Seek Error
+E$Full rmb 1 Media Full
+E$BTyp rmb 1 Bad Type (incompatable) media
+E$DevBsy rmb 1 Device Busy
+E$DIDC rmb 1 Disk ID Change
+E$Lock rmb 1 Record is busy (locked out)
+E$Share rmb 1 Non-sharable file busy
+E$DeadLk rmb 1 I/O Deadlock error
 
  opt l
+

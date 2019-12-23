@@ -1,0 +1,40 @@
+ opt -l
+ ttl System Type Definitions
+ page
+************************************
+*
+*     CPU Type Definitions
+*
+ org 10
+Color rmb 1
+
+************************************
+*
+*    Power Line Frequency Definitions
+*
+Hz50 equ 1 Assemble clock for 50 hz power
+Hz60 equ 2 Assemble clock for 60 hz power
+PwrLnFrq set Hz60 Set to Appropriate freq
+
+
+************************************
+* ACIA type set up
+*
+ org 1
+ACIA6850 rmb 1 MC6850 acia.
+ACIA6551 rmb 1 SY6551 acia.
+ACIA2661 rmb 1 SC2661 acia.
+ACIATYPE set ACIA6551
+
+
+************************************
+* Specific System definitions
+*
+CPUType set Color
+ClocType set 0
+DPort set $FF40 Disk controller address
+ACIAType set ACIA6551
+A.AciaP set $FF68 6551 ACIAPak Address
+A.ModP set $FF6C Modem Pak Address
+
+ opt l
