@@ -1,5 +1,5 @@
  opt l
- nam CoCo 1.00.00 FD-500 controller boot source
+ nam CoCo 2.00.00 FD-500 controller boot source
 
  opt -c
 
@@ -38,14 +38,14 @@
  mod BTEND,BTNAM,SYSTM+OBJCT,REENT+1,BTENT,BTSTA
 BTNAM fcs "Boot"
 
- fcb 0 Edition telltale byte
+ fcb 1 Edition telltale byte
 *******************
 * Revision History
 * edition 0: prehistoric
 * edition 1: all use statements converted to use defsfile
 *            copyright removed from object file
 *            disktype set Dc3 added
-* edition ?: backported to CoCo 1.00.00
+* edition ?: backported to CoCo 2.00.00
 *******************
 
  pag
@@ -211,12 +211,7 @@ Bootz puls x,u
 RESTOR clr V.Drv,u
  clr V.TRCK,U Old track = 0
  lda #5 Repeat five times
-RESTR2 ldb #F.STPI Step in command
- pshs A
- lbsr WCR0 Issue command, delay & wait for done.
- puls A
- deca DONE Stepping?
- bne RESTR2 ...no; step again.
+ lbsr RESTR2 Issue command, delay & wait for done.
  ldb #F.REST Restore command
  lbra WCR0
  pag
@@ -293,7 +288,7 @@ READNMI leas 12,s
  puls y Restore regs
  ldb DPort+DP.CmdR Get status
  bitb #%00000100 Lost data?
- lbeq STCK
+ beq STCK
 
 RDERR comb
  ldb #E$Read
@@ -345,7 +340,7 @@ PHYSC7 equ *
 
 SETTRK incb sectors start at 1
  stb DPort+DP.SecR put sector in sector reg
- ldb V.TRCK,U Get old track
+RESTR2 ldb V.TRCK,U Get old track
  stb DPort+DP.TrkR Put old track in trk reg
  cmpa V.TRCK,U Same track?
  beq SETRK9 ..yes; skip seek.
