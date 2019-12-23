@@ -22,7 +22,7 @@
  mod LSTEND,LSTNAM,PRGRM+OBJCT,REENT+1,LSTENT,LSTMEM
 LSTNAM fcs "List"
 
- fcb 4 edition number
+ fcb 5 edition number
 *****
 * REVISION HISTORY
 * edition 4: prehistoric
