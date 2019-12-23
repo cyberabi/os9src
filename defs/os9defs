@@ -148,8 +148,38 @@ SS.SQD rmb 1 Sequence down hard disk
 SS.DCmd rmb 1 Send direct command to disk
 SS.DevNm rmb 1 Return Device name (32-bytes at [X])
 SS.FD rmb 1 Return File Descriptor (Y-bytes at [X])
+SS.Ticks rmb 1 Set Lockout honor duration
+SS.Lock rmb 1 Lock/Release record
+SS.DStat rmb 1 Return Display Status (CoCo)
+SS.Joy rmb 1 Return Joystick Value (CoCo)
+SS.BlkRd rmb 1 Block Read
+SS.BlkWr rmb 1 Block Write
+SS.Reten rmb 1 Retension cycle
+SS.WFM rmb 1 Write File Mark
+SS.RFM rmb 1 Read past File Mark
+SS.ELog rmb 1 Read Error Log
+SS.SSig rmb 1 Send signal on data ready
+SS.Relea rmb 1 Release device
+SS.AlfaS rmb 1 Return Alfa Display Status (CoCo)
+SS.Break rmb 1 Send break signal out acia
+SS.RsBit rmb 1 Reserve bitmap sector (do not allocate in) LSB(X)=sct#
+ rmb 1 reserved
+ rmb 4 reserve $20-$23 for Japanese version (Hoshi)
+SS.SetMF rmb 1 reserve $24 for Gimix G68 (Flex compatability?)
+SS.Cursr rmb 1 Cursor information for COCO
+SS.ScSiz rmb 1 Return screen size for COCO
+SS.KySns rmb 1 Getstat/Putstat for COCO keyboard
+SS.ComSt rmb 1 Getstat/Putstat for Baud/Parity
+SS.Open rmb 1 Putstat to tell driver a path was opened
+SS.Close rmb 1 Putstat to tell driver a path was closed
+SS.HngUp rmb 1 Putstat to tell driver to hangup phone
 
-
+ ifeq CPUType-Color
+* System Specific and User defined codes above $80
+ org 80 
+SS.AAGBf rmb 1 Putstat to Allocate Additional Graphic Buffer
+SS.SLGBf rmb 1 Putstat to Select a different Graphic Buffer
+ endc
 
  TTL Structure Formats
  pag
