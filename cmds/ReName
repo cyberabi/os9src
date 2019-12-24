@@ -24,7 +24,7 @@ Revs set REENT+1
  mod RenEnd,RenNam,Type,Revs,Rename,RenMem
 RenNam fcs /Rename/
 
- fcb 5 Edition number
+ fcb 6 Edition number
 *****
 * REVISION HISTORY
 * edition 5: prehistoric
