@@ -25,7 +25,7 @@ Revs set REENT+1
  mod STimEnd,STimNam,Type,Revs,STimEnt,STmem
 STimNam fcs "Setime"
 
- fcb 8 Edition number
+ fcb 9 Edition number
 *****
 * REVISION HISTORY
 * edition 8: prehistoric
@@ -35,8 +35,8 @@ STimNam fcs "Setime"
 * Static Storage
 *
           org 0
-          rmb 256 room for stack
-          rmb 256 room for params
+          rmb 225 room for stack
+          rmb 225 room for params
 STmem     equ .
 
 
