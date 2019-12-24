@@ -27,7 +27,7 @@ Revs set REENT+1
  mod SleepEnd,SleepNam,Type,Revs,SleepEnt,sleepmem
 SleepNam fcs /Sleep/
 
- fcb 1 Edition number
+ fcb 2 Edition number
 *****
 * REVISION HISTORY
 * edition 1: prehistoric
@@ -39,8 +39,8 @@ SleepNam fcs /Sleep/
 * Static Storage Offsets
 *
           org 0
-          rmb 256  room for stack
-          rmb 256  room for params
+          rmb 225  room for stack
+          rmb 225  room for params
 sleepmem  equ .
 
 
