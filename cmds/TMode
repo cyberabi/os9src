@@ -34,7 +34,7 @@
  mod SETSIZ,SETNAM,PRGRM+OBJCT,REENT+1,SETENT,SETMEM
 SETNAM fcs "Tmode"
 
- fcb 8 edition number
+ fcb 11 edition number
 *********************
 * Edition History
 *
@@ -43,16 +43,9 @@ SETNAM fcs "Tmode"
 * Ed  7 - File set up for LI and LII assembly w/common defs WGP 12/2/82
 *
 * Ed  8 - Add conditionals for Color Computer               KKK 01/05/83
+*
+* Ed 11 - Backport to match CC 2.00.00; xon xoff            CJB 12/23/19
  pag
-
-normal equ 0 normal screen size
-small equ 1 small screen size
-Screen equ small
- ifeq Screen-small
-MARGIN set 22 Output line margin
- else
-MARGIN set 50 Output line margin
- endc
 
 C$PATH set '. Optional path delimiter
 C$NOT set '- Logical not character
@@ -64,6 +57,7 @@ C$PDLIM set '/
  org 0
 SETPTH rmb 1 Set's path number
 NOTSET rmb 1 1="not", 0=not "not"
+MARGIN rmb 1 Screen margin
 LINPTR rmb 2 Command line ptr
 LINPOS rmb 1 Output line position
 SIGNIF rmb 1 Significant digits
@@ -98,11 +92,7 @@ ZER0 equ 0
 NUMRIC equ 0
 BINARY equ 1
 
- ifeq CPUType-COLOR
- fdb 21 Number of table entries (baud, no XON, XOFF)
- else
- fdb 22 Number of table entries (no baud)
- endc
+ fdb 23 Number of table entries (baud, XON, XOFF)
 
 OPTTBL equ *
  fcb LOGCAL,NONZ,PD.UPC-PD.OPT,NONZ
@@ -145,22 +135,34 @@ OPTTBL equ *
  fcs "bell" Bell character
  fcb BINARY,$15,PD.PAR-PD.OPT,0
  fcs "type" Acia no-parity type
- ifne CPUType-COLOR
+ fcb BINARY,$02,PD.BAU-PD.OPT,0
+ fcs "baud" baud rate
  fcb BINARY,C$XON,PD.XON-PD.OPT,0
  fcs "xon" x-on char
  fcb BINARY,C$XOFF,PD.XOFF-PD.OPT,0
  fcs "xoff"
- endc
- ifeq CPUType-COLOR
- fcb NUMRIC,$02,PD.BAU-PD.OPT,0
- fcs "baud" baud rate
- endc
  pag
 
 *****
 * Tmode
 *
-SETENT leay 0,X (y)=command line parameters
+SETENT lda #50 wide screen margin
+ sta MARGIN
+ pshs Y,X,D
+ lda #1 Standard out
+ ldb #SS.ScSiz Get screen width
+ OS9 I$GetStt
+ bcc SET3
+ cmpb #E$UnkSvc
+ beq SET6
+ puls D,X,Y
+ bra SETEXT
+SET3 cpx #80 Wide screen?
+ beq SET6 ..yes; use default
+ lda #22 Narrow screen margin
+ sta MARGIN
+SET6 puls D,X,Y
+ leay 0,X (y)=command line parameters
  bsr SKIPSP Skip any [comma] spaces
  clra
  cmpb #C$PATH Path delimiter?
@@ -446,7 +448,7 @@ OUTCHR pshs D,X,Y Save regs
  cmpa #C$CR
  beq OUTC05
  incb
- cmpb #MARGIN Beyond outer margin?
+ cmpb MARGIN Beyond outer margin?
  blo OUTC10 ..no
  cmpa #C$SPAC Printing a space?
  bne OUTC10 ..no
