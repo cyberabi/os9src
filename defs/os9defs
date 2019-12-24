@@ -349,7 +349,7 @@ E$PNNF rmb 1 Path Name Not Found
 E$SLF rmb 1 Segment List Full
 E$CEF rmb 1 Creating Existing File
 E$IBA rmb 1 Illegal Block Address
- rmb 1
+E$HangUp rmb 1 Carrier Detect Lost
 E$MNF rmb 1 Module Not Found
  rmb 1
 E$DelSP rmb 1 Deleting Stack Pointer memory

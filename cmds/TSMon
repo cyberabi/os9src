@@ -29,7 +29,7 @@
  mod TSMEND,TSMNAM,PRGRM+OBJCT,REENT+1,TSMON,TSMMEM
 TSMNAM fcs "Tsmon"
 
- fcb 6 edition number
+ fcb 7 edition number
 *********************
 * Edition History
 *
@@ -38,6 +38,8 @@ TSMNAM fcs "Tsmon"
 * Ed  5 - file downcased and translated to new defs  WGP  12/2/82
 *
 * Ed  6 - changed loc of buffer for readline to stack  WGP  12/3/82
+*
+* Ed  7 - backported to CC 2.00.00 CJB  12/23/19
 
  org 0
 TSPROC rmb 1 Child process id
@@ -82,8 +84,11 @@ TSMON6 clra
  ldy #1
  OS9 I$ReadLn wait for terminal activity
  leas 1,S
- bcs TSMON6 ..error; retry
- lda #OBJCT
+ bcc TSMON7
+ cmpb #E$HangUp fatal error?
+ bne TSMON6 ..no; retry
+ bra TSMON9
+TSMON7 lda #OBJCT
  clrb
  leax <LOGIN,PCR
  leau <TSMEOL,PCR
@@ -94,7 +99,7 @@ TSMON6 clra
 TSMON8 OS9 F$WAIT Wait for death
  cmpa TSPROC Child go away?
  bne TSMON8
- ldx LINPTR Reset line pointer
+TSMON9 ldx LINPTR Reset line pointer
  ldd LINLEN Reset line length
  bra TSMON2 ..restart
 
