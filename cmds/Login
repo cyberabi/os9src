@@ -25,7 +25,7 @@
  mod LOGEND,LOGNAM,PRGRM+OBJCT,REENT+1,LOGIN,LOGMEM
 LOGNAM fcs "Login"
 
- fcb 9 edition number
+ fcb 12 edition number
 
 *********************
 * Edition History
@@ -35,12 +35,13 @@ LOGNAM fcs "Login"
 * Ed  8 - Conditionals added for LI, LII assembly  WGP 12/02/82
 *
 * Ed  9 - Optimized MOTD code for LI               KKK 12/03/82
+*
+* Ed 12 - Long and short messages, buffered output,
+*         CC 2.00.00                               CJB 12/23/19
 
 MAXTRY set 3 Num of login attempts permitted
 LINSIZ set 80 Input line buffer size
-normal equ 0 normal screen size
-small equ 1 small screen size
-Screen equ small small screen size
+OUTSIZ set 80 Output line buffer size
 PSWBSZ equ 128 Password file max rcd length
 C$CR set $0D
 C$LF set $0A
@@ -48,14 +49,18 @@ C$SPAC set $20
 C$PWDL set ', Password rcd field delimiter
 C$SLSH set '/
 C$COLN set ':
+C$DP set '.
 
  org 0
+OPTL rmb 1 Narrow screen flag
 PSWPTH rmb 1
 MTDPTH rmb 1
 RETRY rmb 1
 USRNUM rmb 1 User's process id
+USRPRI rmb 1 User's priority
 BUFPTR rmb 2 Password file buffer ptr
 LINPTR rmb 2 Input line buffer ptr
+OUTPTR rmb 2 Path options buffer ptr
 SIGNIF rmb 1 Significant digit flag
 DATE rmb 3 System date
 TIME rmb 3 System time
@@ -63,7 +68,8 @@ TIME rmb 3 System time
 STKTOP equ .
 PSWBUF rmb PSWBSZ Password file buffer
 LINBUF rmb LINSIZ Input line buffer
-StatBuf rmb PD.OPT buffer for terminal path options
+OUTBUF rmb OUTSIZ Output line buffer
+STATBUF rmb PD.OPT buffer for terminal path options
 LOGMEM equ .
 
 **********
@@ -86,20 +92,22 @@ PSWFIL fcc "SYS/"
  fcb C$CR
  fcc ",,,,,,,,,,,,,,," room for password name patching
 TSMSG fcb C$LF,C$LF
- ifeq Screen-small
- fcc "OS-9 "
- else
  fcc "OS-9 Timesharing system   "
- endc
  ifeq LEVEL-1
- fcc "Level I   V1.2"
+ fcc "Level I 01.02.00"
  else
- fcc "Level II  V1.1"
- endc
- ifeq Screen-small
- fcb C$LF
+ fcc "Level II 01.01.00"
  endc
 TSMSZ equ *-TSMSG
+TSMSG2 fcb C$LF,C$LF
+ fcc "OS-9 "
+ ifeq LEVEL-1
+ fcc "Level I 01.02.00"
+ else
+ fcc "Level II 01.01.00"
+ endc
+ fcb C$LF
+TSMSZ2 equ *-TSMSG2
 NAMPMT fcb C$LF
  fcc "User name?: "
 NAMPSZ equ *-NAMPMT
@@ -112,14 +120,14 @@ PSWERR fcc "Invalid password."
 USRMSG fcb C$LF
  fcc "Process #"
 USRMSZ equ *-USRMSG
+LOGMSG2 fcc " logged on "
+LOGMSZ2 equ *-LOGMSG2
 LOGMSG fcc " logged on "
- ifeq Screen-small
  fcb C$LF
- endc
 LOGMSZ equ *-LOGMSG
+
 WELCOM fcc "Welcome!"
  fcb C$CR
-SPACES fcc "     "
 DIRERR fcc "Directory not found."
  fcb C$CR
 FILERR fcb C$LF
@@ -132,7 +140,7 @@ SORRY fcb C$LF
 MOTDFL fcc "SYS/"
  fcc "MOTD"
  fcb C$CR
-ROOT fcc "../../../../.." path to root
+ROOT fcc "......" path to root
  fcb C$SPAC
 pag
 **********
@@ -141,6 +149,9 @@ pag
 *   User-Id, Priority, Exec-Dir, Data-Dir, Shell-Program
 
 LOGIN leas STKTOP,U move stack to relative safety
+ clr OPTL Assume wide screen
+ leay OUTBUF,U
+ sty OUTPTR
  leay LINBUF,U
  sty LINPTR
  std ,--S save param size
@@ -149,7 +160,17 @@ LOG03 lda ,x+
  sta ,y+
  cmpa #$D
  bne LOG03
-LOG04 lda #READ.
+LOG04 lda #1 Standard out
+ ldb #SS.ScSiz
+ OS9 I$GetStt Get line width
+ bcc LOG04A
+ cmpb #E$UnkSvc Fatal error?
+ beq LOG04B
+ lbra LOG50
+LOG04A cmpx #80 Wide screen?
+ beq LOG04B
+ inc OPTL set narrow screen
+LOG04B lda #READ.
  leax ROOT,PCR Get root pathlist
  OS9 I$ChgDir and change data dir
  lda #READ.
@@ -160,14 +181,19 @@ LOG04 lda #READ.
  lda #MAXTRY Max # of bad password tries
  sta RETRY
  ldd ,S++ Any parameter given?
- beq LOG05 ..no
+ beq LOG04C ..no
  ldx LINPTR
  lda 0,X Any parameter given?
  cmpa #C$CR
  bne LOG15 ..yes; don't print header prompt
+LOG04C tst OPTL Wide screen?
+ beq LOG05
+ leax TSMSG2,PCR Narrow
+ ldy #TSMSZ2
+ bra LOG05A
 LOG05 leax TSMSG,PCR Get timesharing header
  ldy #TSMSZ
- lbsr MSGTIM Print timeshare header, time
+LOG05A lbsr MSGTIM Print timeshare header, time
 LOG10 dec RETRY
  leax SORRY,PCR
  lbmi TOOB10 ..yes; print error, exit
@@ -192,12 +218,12 @@ LOG30 lbsr CHKNAM Password given?
  lda #C$PWDL
  sta ,x+
  stx LINPTR
+ lbsr EchoOFF disable terminal echo
  leax PSWPMT,PCR
  ldy #PSWPSZ
- lbsr EchoOFF disable terminal echo
  lbsr INPLIN Print "password: ", get input
  lbsr EchoON
- bcs LOG25 ..error; retry
+ bcs LOG20 ..error; retry
  lbsr CHKNAM Valid password?
  bcc LOG40 ..yes; continue
 LOG35 leax LINBUF,U
@@ -224,10 +250,10 @@ LOG40 lda PSWPTH
  lbsr GETNUM Priority from password file
  tsta Less Than 256?
  lbne TOOBAD ..no; password file error
- tstb
- lbeq TOOBAD
+ tstb Any priority?
+ lbeq TOOBAD ..no; can't log in
+ stb USRPRI
  OS9 F$ID Get (A)=Process ID
- OS9 F$SPrior Set Priority
  sta USRNUM Save user ID
  lda #READ.
  leax MOTDFL,PCR MOTD file name
@@ -241,11 +267,17 @@ LOG50 sta MTDPTH Save MOTD path number
  bsr CHGDIR set user's data dir
  leax USRMSG,PCR
  ldy #USRMSZ
- bsr PRINT Print "user # "
+ lbsr PRTBUF Print "user # "
  leax USRNUM,U
  lbsr PRTNUM Print number
- leax LOGMSG,PCR
- bsr MSGTIM Print "logged on" (time)
+ tst OPTL Widescreen?
+ beq LOG60 ..no
+ leax LOGMSG,PCR Use wide message
+ ldy #LOGMSZ
+ bra LOG70
+LOG60 leax LOGMSG2,PCR Use narrow message
+ ldy #LOGMSZ2
+LOG70 bsr MSGTIM Print "logged on" (time)
  leax WELCOM,PCR
  bsr PRTLIN print "welcome!"
  lbsr MOTD print message of the day
@@ -269,6 +301,9 @@ LOG85 lda ,U+
  cmpa #C$CR
  bne LOG85
  puls U
+ lda USRNUM
+ ldb USRPRI
+ OS9 F$SPrior
  ldd #OBJCT*256
  OS9 F$Chain Chain to user's shell
  OS9 F$PERR
@@ -303,13 +338,20 @@ PRINT lda #1 Print to std output path
  OS9 I$WritLn
  rts
 
-MSGTIM bsr PRINT Print message
- leax SPACES,PCR
- ldy #3
- bsr PRINT Print spaces
+MSGTIM bsr PRTBUF Print message
+ lbsr BUFSPA
+ lbsr BUFSPA
+ lbsr BUFSPA
  lbra DATIME Print date,time
 
-INPLIN bsr PRINT Print prompt
+PRTBUF lda ,X+
+ lbsr BUFCHR Print each character
+ leay -1,Y
+ bne PRTBUF
+ rts
+
+INPLIN bsr PRTBUF Print prompt
+ lbsr WRTBUF
  ldx LINPTR
  ldy #LINSIZ
  clra
@@ -317,7 +359,7 @@ INPLIN bsr PRINT Print prompt
  rts
 
 EchoOFF pshs D,X save regs
- leax StatBuf,U ptr to options buffer
+ leax STATBUF,U ptr to options buffer
  ldb #SS.OPT read the options
  clra of standard input path
  OS9 I$GetStt
@@ -338,7 +380,7 @@ EchoOF90 lda #$FF
  Puls D,X,PC return
 
 EchoON pshs CC,D,X save regs
- leax StatBuf,U
+ leax STATBUF,U
  lda PD.DTP-PD.OPT,X
  cmpa #DT.SCF SCF device?
  bne EchoON90 ..No; exit
@@ -415,24 +457,38 @@ GETNUM ldx BUFPTR
  clra
  clrb
  pshs D,X,Y
+ pshs B Whole part if decimal
 GETN10 ldb ,X+ Get next digit
- subb #'0 Convert to binary
+ cmpb #C$DP Decimal point?
+ bne GETN15 ..no; continue
+ tsta Sum too big?
+ lbne TOOBAD ..yes; exit
+ ldb 2,s
+ stb ,s Save whole part
+ clr 2,s Reset fraction
+ bra GETN10
+GETN15 subb #'0 Convert to binary
  cmpb #9 Numeric?
  bhi GETN90 ..no; exit
  clra
  ldy #10
-GETN20 addd 0,S Plus previous sum * 10
+GETN20 addd 1,S Plus previous sum * 10
  lbcs TOOBAD
  leay -1,Y
  bne GETN20
- std 0,S Save new sum
+ std 1,S Save new sum
  bra GETN10 ..repeat
 
 GETN90 lda -1,X
  cmpa #C$PWDL Followed by delimiter?
  lbne TOOBAD
  stx BUFPTR
- puls D,X,Y,PC Return
+ lda ,S+ Fraction?
+ beq GETNXIT ..no; exit
+ tst ,S Whole part is zero?
+ lbne TOOBAD ..no; exit
+ sta ,S Return the fraction
+GETNXIT puls D,X,Y,PC Return
 
 *****
 * Datime
@@ -440,24 +496,10 @@ GETN90 lda -1,X
 *
 DATIME leax DATE,U
  OS9 F$TIME
- bsr PRTDAT
- lda #C$SPAC
- bsr OUTCHR
+ bsr PRTDAT Print date
+ bsr BUFSPA
  bsr PRTIME Print time
- lda #C$CR
-* Fall Through To Outchr
-
-
-*****
-* Outchr
-*   Print Character In (A)
-*
-OUTCHR pshs D,X,Y
- lda #1 To standard output
- ldy #1 Print one char
- leax 0,S Which is on the stack
- OS9 I$WritLn
- puls D,X,Y,PC
+ bra CRWRTBF
 
 *****
 * Prtime
@@ -475,8 +517,9 @@ PRTI10 lda #C$COLN
 PRTDAT bsr PRTNUM
  bsr PRTD10
 PRTD10 lda #C$SLSH
-PRTD20 bsr OUTCHR
-*      Bra Prtnum
+PRTD20 bsr BUFCHR
+
+* Fall through to Prtnum
 
 *****
 * Prtnum
@@ -493,17 +536,44 @@ PRTN10 inca Form Hundreds digit
 PRTN20 deca Form Tens digit
  addb #10
  bcc PRTN20
- bsr OUTCHR Print
+ bsr BUFCHR Print
  tfr B,A
  adda #'0 Form units digit
- bra OUTCHR
+ bra BUFCHR
 
 ZERSUP inc SIGNIF
  cmpa #'0
- bne OUTCHR
+ bne BUFCHR
  dec SIGNIF
- bne OUTCHR
+ bne BUFCHR
  rts
+
+BUFSPA lda #C$SPAC
+BUFCHR pshs X
+ ldx OUTPTR
+ sta ,X+
+ stx OUTPTR
+ puls X,PC
+
+*
+* Write CR and then buffer
+*
+CRWRTBF pshs A
+ lda #C$CR
+ bsr BUFCHR
+ puls A
+
+* Fall through to write buffer
+
+WRTBUF pshs Y,X,D
+ leax OUTBUF,U
+ ldd OUTPTR
+ stx OUTPTR
+ subd OUTPTR How much buffered?
+ tfr D,Y
+ lda #1 Standard out
+ OS9 I$WritLn
+ puls D,X,Y,PC
 
  emod Module Crc
 LOGEND equ *
