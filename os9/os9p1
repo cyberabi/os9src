@@ -46,7 +46,7 @@ OS9Nam fcs /OS9/
  else
 OS9Nam fcs /OS9p1/
  endc
- fcb 14 Edition number
+ fcb 15 Edition number
 
 *************************
 *    Edition History
@@ -76,6 +76,9 @@ OS9Nam fcs /OS9p1/
 *
 * Ed. 14 - Changes to match Color Computer V2.00.00
 *                                                      CJB  12/21/19
+*
+* Ed. 15 - Changes to match Color Computer V2.01.00
+*                                                      CJB  12/25/19
 
 *********
 * Version Id
@@ -363,7 +366,11 @@ COLD45 ldd ,Y++ get vector
  OS9 F$LINK Link to configuration module
  lbcs COLD Retry if error
  stu D.Init Save ptr
- ldd MAXMEM+1,U Get memory limit
+ lda CFlag4,U Look at init module options
+ bita #1
+ beq COLD47
+ inc D.ChkCRC
+COLD47 ldd MAXMEM+1,U Get memory limit
  clrb ROUND Down
  cmpd D.MLIM Does ram go that high?
  bcc COLD50 Branch if not
@@ -885,7 +892,11 @@ IDCHK ldd 0,X Get first two bytes
 IDCH10 comb SET Carry
  ldb #E$BMID Err: illegal id block
 IDCH20 rts
-IDCH30 pshs X Save module ptr
+IDCH30 lda D.ChkCRC Check crc flag
+ bne IDCH40 ..yes? continue
+ clrb
+ rts
+IDCH40 pshs X Save module ptr
  ldy M$SIZE,X Get module size
  bsr CRCCHK Check crc code
  puls X,PC

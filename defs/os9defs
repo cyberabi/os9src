@@ -232,6 +232,14 @@ InitStr rmb 2 Initial Module Name
 SysStr rmb 2 System Device Name
 StdStr rmb 2 Standard I/O Pathlist
 BootStr rmb 2 Bootstrap Module name
+ProtFlag rmb 1 Write protect enable flag
+CFlag0 rmb 1
+CFlag1 rmb 1
+CFlag2 rmb 1
+CFlag3 rmb 1
+CFlag4 rmb 1
+CFlag5 rmb 1
+
  pag
 ************************************************************
 *

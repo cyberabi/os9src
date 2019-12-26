@@ -59,6 +59,9 @@ D.Boot rmb 1 Bootstrap attempted flag
 D.URtoSs rmb 2 address of user to system routine (VIRQ)
 D.CLTB rmb 2 Pointer to clock interrupt table (VIRQ)
 
+D.FLAG1 rmb 1 CC OS9 Level 1 02.01.00
+D.ChkCRC rmb 1 Non-zero to check module CRC not just checksum
+
 * TABLE SIZES
 
 BMAPSZ equ 32 BIT MAP SIZE
