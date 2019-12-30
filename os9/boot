@@ -38,7 +38,7 @@
  mod BTEND,BTNAM,SYSTM+OBJCT,REENT+1,BTENT,BTSTA
 BTNAM fcs "Boot"
 
- fcb 1 Edition telltale byte
+ fcb 4 Edition telltale byte
 *******************
 * Revision History
 * edition 0: prehistoric
@@ -46,6 +46,7 @@ BTNAM fcs "Boot"
 *            copyright removed from object file
 *            disktype set Dc3 added
 * edition ?: backported to CoCo 2.00.00
+* edition 4: backported to CoCo 2.01.00; double-sided
 *******************
 
  pag
@@ -55,10 +56,15 @@ BTNAM fcs "Boot"
 *
 *
  org 0
-V.DRV rmb 1 Drive number
-V.TMP rmb 1 Temporary save byte
+V.CMD rmb 1 Temporary save byte
+ rmb 1
 V.BUF rmb 2 Local buffer addr
 V.TRCK rmb 1 Current track
+V.FMT rmb 1 Disk format
+V.TKS rmb 1 Sectors / track
+V.SCT rmb 2 Sector count (unused)
+V.SIDES equ V.SCT+1 Non-zero if double-sided
+V.SIDE rmb 1 Side flag for LSN to (t,s)
 BTSTA equ . Total static requirement
 
 
@@ -66,8 +72,8 @@ BTSTA equ . Total static requirement
 * FD1773 Commands
 *
 
-F.REST equ $03 Restore command
-F.SEEK equ $13 Seek command
+F.REST equ $00 Restore command (unload head, no verf, slow step)
+F.SEEK equ $10 Seek command (no verf, slow step)
 F.STPI equ $43 Step in one track command
 F.READ equ $80 Read sector command (non-IBM)
 F.WRIT equ $A0 Write sector command (non-IBM)
@@ -87,9 +93,9 @@ DP.SecR rmb 1 sector register
 DP.DatR rmb 1 data register
 
 SeekDly set 8750 seek delay
-MotorDly set 50000 disk select delay
+MotorDly set 25000 disk select delay
 MotorOn set %00001000 motors on
-RddDrv0 set %00111001 select drive 0, DD, precomp
+RddDrv0 set %00101001 select drive 0, DD
 SelDrv0 set %00001001 select drive 0
 HaltDrv0 set %10111001 enable halt on drive 0
 SPT set 18
@@ -114,20 +120,17 @@ INILUP pshs a
  decb
  bne INILUP
  tfr s,u Point "u" to static
- ldx #DPORT Point to controller addr
- leax DP.CmdR,X Address of command register
+ ldx #DPort+DP.CmdR Point to command register
  lda #F.Typ1
- sta 0,x Inz controller chip
- lbsr DELAY1 Wait for 1771
- lda 0,x Read controller status to clear it.
+ sta ,x Inz controller chip
+ lbsr Delay1 Wait for 1771
+ lda ,x Read controller status to clear it.
  lda #$FF
  sta V.TRCK,U Inz to high track count
-
  leax READNMI,PCR hook NMI for halt
  stx VV.NMI+1
  lda #$7E jmp opcode
  sta VV.NMI+0
-
  lda #MotorOn turn on disk motors
  sta DPort+DP.Ctrl
  ldd #MotorDly spin up delay
@@ -149,32 +152,42 @@ SelDly nop
 *          (Y) Unchanged
 *          (U) Unchanged
 *
-LBOOT pshs D,X,U Save registers
- clra
- clrb
- ldy #1
- ldx D.FMBM
- ldu D.FMBM+2
- OS9 F$SchBit Search for buffer spot
+LBOOT pshs D,X,Y,U Save registers
+ ldd #1 Equivalent to 256 here
+ OS9 F$SRqMem Get sector buffer
  bcs BOOTE1 Problem no mem
- exg a,b Convert page no. to addr
- ldu 4,s Restore "u"
- std V.BUF,u Save buffer addr for use
+ tfr U,D Save addr
+ ldu 6,S Global storage
+ std V.BUF,U
  clrb
- ldx #0 Get sector zero
+ ldx #0 Get sector 0
  bsr READSK
  bcs BOOTE1 Branch if can't
+ ldd DD.TOT+1,Y Total sectors (non-HD)
+ std V.SCT,U
+ lda DD.FMT,Y Get disk format
+ sta V.FMT,U
+ anda #1 Keep sides
+ sta V.SIDES,U
+ lda DD.TKS,Y Get sectors / track
+ sta V.TKS,U
  ldd DD.BSZ,Y Get bootstrap size
  std 0,S Return to caller
- OS9 F$SRqMem Get boot memory
- bcs BOOTE1 Branch if none
- stu 2,S Return to caller
- ldu 4,S Get static storage
- ldx 2,s Get mem addr
- stx V.BUF,u
  ldx DD.BT+1,Y Get boot sector
- ldd DD.BSZ,Y Get boot size
- beq BOOT2
+ pshs X
+ ldd #256 Return sector buffer
+ ldu V.BUF,U
+ OS9 F$SRtMem
+ ldd 2,S Get bootstrap size
+ OS9 F$SRqMem Get boot memory
+ puls X Get boot sector
+ bcs BOOTE1 Branch if no memory
+ stu 2,S Return to caller
+ ldu 6,S Get static storage
+ ldd 2,S Get mem addr
+ std V.BUF,U
+ ldd ,S Get boot size
+ beq BOOT2 no; exit
 BOOT1 pshs D,X Save size, sector number
  clrb
  bsr READSK Read sector
@@ -191,7 +204,7 @@ BOOT2 clrb CLEAR Carry
 
 BOOTER leas 4,S Return scratch
 BOOTE1 leas 2,S Return scratch
-Bootz puls x,u
+Bootz puls x,u,y
  leas BTSTA,s De-allocate static fm stack
  rts
  pag
@@ -208,7 +221,8 @@ Bootz puls x,u
 *        Issuing The Restore.  As Suggested In The
 *        Application Notes.
 *
-RESTOR clr V.Drv,u
+RESTOR lda #RddDrv0 Control to read drive 0
+ sta V.CMD,U
  clr V.TRCK,U Old track = 0
  lda #5 Repeat five times
  lbsr RESTR2 Issue command, delay & wait for done.
@@ -259,16 +273,20 @@ READSC bsr PHYSIC Move head to track
  ldy #-1
  ldb #F.READ Read sector command
  stb DPort+DP.CmdR
- ldb #RddDrv0 Drive 0, DD, precomp
- stb DPort+DP.Ctrl
+ ldb V.CMD,u
+ orb #%00110000 Set DD, precomp
+ tst V.SIDE,u Side 2?
+ beq READSC0 ..no; skip
+ orb #%01000000 Set drive select 3 (?!) for 2nd side
+READSC0 stb DPort+DP.Ctrl
  lbsr DELAY1
- ldb #HaltDrv0 enable halting
+ orb #%10000000 enable halting
  lda #%00000010 poll data request bit
 READSC1 bita DPort+DP.CmdR
  bne READS2 data is ready
 READSC2 leay -1,y timeout
  bne READSC1
- lda #SelDrv0
+ lda V.CMD,u
  sta DPort+DP.Ctrl
  puls y
  bra RDERR
@@ -305,16 +323,32 @@ RDERR comb
 *  Error:  B = Error Code, W/Carry Set
 *
 
-PHYSIC clr V.DRV,u
+PHYSIC lda #SelDrv0 Control to select drive 0
+ sta V.CMD,U
+ clr V.SIDE,U Start on first side
  tfr X,D Logical sector (os-9)
  cmpd #0 Logical sector zero?
  beq PHYSC7 ..yes; skip conversion.
- clr ,-s alloc temp
- bra PHYSC4
-PHYSC3 inc 0,S
-PHYSC4 subd #SPT sectors per track
+ clr ,-s Will be track number
+ tst V.SIDES,U Double sided?
+ beq PHYSC4 ..no; use ss code
+ bra PHYSC4B ..yes; use ds code
+
+* Double-sided conversion
+PHYSC3B com V.SIDE,U Switch sides
+ bne PHYSC4B ..No track yet if side 2
+ inc 0,s One more track (both sides)
+PHYSC4B subb V.TKS,U Subtract one track worth of sectors
+ sbca #0
+ bcc PHYSC3B Repeat until less than 1 trk
+ bra PHYSC5
+
+* Single-sided conversion
+PHYSC3 inc 0,s One more track
+PHYSC4 subb V.TKS,U Subtract one track worth of sectors
+ sbca #0
  bcc PHYSC3 Repeat until less than 1 trk
-PHYSC5 addb #SPT Add back for sector number
+PHYSC5 addb #SPT Add back for sector number (?!)
  puls A Desired track.
 PHYSC7 equ *
 
@@ -392,7 +426,7 @@ WCR02 ldb DPort+DP.CmdR Get status
  bne WCR02 ..yes; wait for it.
  rts
 
-WCR lda #SelDrv0
+WCR lda V.CMD,U Get preformatted command
  sta DPort+DP.Ctrl Select drive
  stb DPort+DP.CmdR Issue command
  rts
