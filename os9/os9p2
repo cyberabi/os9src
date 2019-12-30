@@ -941,13 +941,20 @@ CType set SYSTM
  fdb $F800 High free memory bound
  fcb 12 Entries in interrupt polling table
  fcb 12 Entries in device table
- fdb ModNam Initial module name
- fdb DirNam Default directory name
- fdb TermNam Standard i/o device name
- fdb BootNam Bootstrap module name
+MName fdb ModNam Initial module name
+DName fdb DirNam Default directory name
+TName fdb TermNam Standard i/o device name
+BName fdb BootNam Bootstrap module name
+ fcb %00000001 CFlag0
+ fcb %00000001 CFlag1
+ fcb %00000010 CFlag2
+ fcb %00000001 CFlag3
+ fcb %00000000 CFlag4 Bit 0 = verify module CRC
+ fcb %00000001 CFlag5
+ fcb %00000000 CFlag6
 ConNam fcs "Init"
 ModNam fcs "SysGo"
-DirNam fcs "/D0"
+DirNam fcs "/DD"
 TermNam fcs "/Term"
 BootNam fcs "Boot"
  emod

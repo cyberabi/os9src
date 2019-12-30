@@ -237,8 +237,9 @@ CFlag0 rmb 1
 CFlag1 rmb 1
 CFlag2 rmb 1
 CFlag3 rmb 1
-CFlag4 rmb 1
+CFlag4 rmb 1 Bit 0 = verify module CRC
 CFlag5 rmb 1
+CFlag6 rmb 1
 
  pag
 ************************************************************
