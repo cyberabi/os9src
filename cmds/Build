@@ -23,11 +23,13 @@
  mod BLDEND,BLDNAM,PRGRM+OBJCT,REENT+1,BLDENT,BLDMEM
 BLDNAM fcs "Build"
 
- fcb 5 edition level
+ fcb 6 edition level
 *****
 * REVISION HISTORY
 * edition 4: prehistoric
 * edition 5: copyright notice removed; stack and param area reserved
+* edition 6: OS9 L1 02.01.00
+
 *****
 
 * Static Storage offsets
@@ -39,7 +41,7 @@ BUFFER rmb 128
 BLDMEM equ .
 
  pag
-BLDENT ldd #WRITE.*256+UPDAT.+PREAD. mode=write; attr=update
+BLDENT ldd #WRITE.*256+UPDAT. mode=write; attr=update
  OS9 I$Create create output path
  bcs BUIL40 Abort if error
  sta OUTPATH save output path
