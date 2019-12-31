@@ -25,7 +25,7 @@ Revs set REENT+1
  mod CldEnd,CldNam,Type,Revs,CldEnt,CldMem
 CldNam fcs /SysGo/
 
- fcb 12 Edition number
+ fcb 15 Edition number
 
  ifeq CPUType-Color
  rmb 200
@@ -36,36 +36,41 @@ CldNam fcs /SysGo/
 CldMem equ .
 
 MOTD equ *
- fcc "OS-9 LEVEL ONE VR. 02.00.00"
- fcb $0d,$0a
+ fcc "OS-9 LEVEL ONE VR. 02.01.00"
+ fcb 0,$0d,0,$0a
+ fcc "PHOENIX RELEASE 11/04/2002"
+ fcb 0,$0d,0,$0a
+ fcc "HTTP://COCOOS9.SOURCEFORGE.NET"
+ fcb 0,$0d,0,$0a
  fcc "COPR. 1980 BY MOTOROLA INC. AND"
- fcb $0d,$0a
+ fcb 0,$0d,0,$0a
  fcc "MICROWARE SYSTEMS CORP."
- fcb $0d,$0a
+ fcb 0,$0d,0,$0a
  fcc "LICENSED TO TANDY CORP."
- fcb $0d,$0a
+ fcb 0,$0d,0,$0a
  fcc "ALL RIGHTS RESERVED."
- fcb $0d,$0a,$0a
+ fcb 0,$0d,0,$0a
+ fcb $0a
 MOTDEnd equ *
 
-HDStr fcc "/H0"
+HDStr fcc "/DD"
  fcb $D
-HDDir fcc "/H0/"
-DirStr fcc "Cmds"
+HDDir fcc "/DD/"
+DirStr fcc "CMDS"
  fcb $D
  fcc ",,,,,,,,,," room for patch
 CMDSTR fcc "Shell"
+NOARGS fcb $D
+ATXSTR fcc "AutoEx"
  fcb $D
- fcc "TSMON"
- fcb $D
-SHLFUN fcc "STARTUP -P"
+SHLFUN fcc "startup -p"
  fcb $D
  fcc ",,,,,,,,,," room for patch
 FUNSIZ equ *-SHLFUN
 
 
  ifeq CPUType-Color
-SysTime fcb 85,6,1,0,0,0 default system time
+SysTime fcb 102,8,1,0,0,0 default system time
 WarmVec fcb $55 sentinel
  fcb $00
  fcb $74
@@ -121,6 +126,13 @@ NOHD OS9 F$ID Get proc id
  ldy #FUNSIZ Size of parameters
  OS9 F$FORK Execute startup file
  bcs CLDERR Branch if error
+ OS9 F$WAIT Wait for it
+ leax ATXSTR,PCR Get ptr to "AutoEx"
+ leau NOARGS,PCR Empty parameters
+ ldd #OBJCT*256 Get type
+ LDY #1 Size of parameters
+ OS9 F$FORK Execute AutoEx script
+ bcs CLDM10
  OS9 F$WAIT Wait for it
 CLDM10 leax CMDSTR,PCR Get command name ptr
  ldd #OBJCT*256
