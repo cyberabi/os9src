@@ -34,7 +34,7 @@
  mod SETSIZ,SETNAM,PRGRM+OBJCT,REENT+1,SETENT,SETMEM
 SETNAM fcs "Tmode"
 
- fcb 11 edition number
+ fcb 12 edition number
 *********************
 * Edition History
 *
@@ -157,8 +157,8 @@ SETENT lda #50 wide screen margin
  beq SET6
  puls D,X,Y
  bra SETEXT
-SET3 cpx #80 Wide screen?
- beq SET6 ..yes; use default
+SET3 cpx #55 Wide screen?
+ bge SET6 ..yes; use default
  lda #22 Narrow screen margin
  sta MARGIN
 SET6 puls D,X,Y
@@ -318,18 +318,10 @@ OPTLST clr LINPOS
  lda #C$PDLIM
  lbsr OUTCHR
 
- ifge LEVEL-2
  leax OUTLIN+10,U
  lda SETPTH tmode path number
  ldb #SS.DevNm
  OS9 I$GetStt copy the device name
- else
- ldx OPTBUF+PD.TBL-PD.OPT,U Device tbl ptr
- ldx V$DESC,X Device Descriptor ptr
- ldd M$NAME,X
- leax D,X ptr to Device name
- endc
-
  bsr PrtName put name in output buffer
  lda #C$CR
  lbsr OUTCHR
