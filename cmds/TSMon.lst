@@ -1,0 +1,283 @@
+output:  ../modules/cmds/TSMon
+XAsm OS-9 Cross Assembler Version 01.00.01    01/01/20 02:02:21      Page 001
+TSMON - OS9 Timesharing terminal monitor
+
+00001                             nam   TSMON
+00002                    
+00003                    * Copyright 1980 by Microware Systems Corp.,
+00004                    
+00005                    *
+00006                    * This source code is the proprietary confidential prop
+00007                    * Microware Systems Corporation, and is provided to lic
+00008                    * solely  for documentation and educational purposes. R
+00009                    * publication, or distribution in any form to any party
+00010                    * the licensee is strictly prohibited!
+00011                    *
+00012                    
+00013                             use   defsfile
+00014    0001            LEVEL    equ   1          select level one
+00015                             ifp1  
+00023                             endc  
+00024                             use   /d0/defs/sysdefs.sys
+00025                             ifp1  
+00027                             endc  
+00028                    
+00029                    
+00030                             ttl   OS9 Timesharing terminal monitor
+TSMon                                        page   2
+00032                    *****
+00033                    * Tsmon [<pathname>]
+00034                    *
+00035                    * Timesharing monitor utility.
+00036                    * Author: Robert Doggett
+00037                    
+00038                    * Wait for activity (Cr) on Std Input,
+00039                    * then Forks to Login for user verification.
+00040                    * If a pathname is specified, it is opened
+00041                    * for update, and used as Std Input, Std Output
+00042                    * and Std Error.
+00043                    
+00044    0000 87CD0081            mod   TSMEND,TSMNAM,PRGRM+OBJCT,REENT+1,TSMON,
+00045    000D 54736D6F   TSMNAM   fcs   "Tsmon"
+00046                    
+00047    0012 08                  fcb   8          edition number
+00048                    *********************
+00049                    * Edition History
+00050                    *
+00051                    * Ed  4 - Beginning of history
+00052                    *
+00053                    * Ed  5 - file downcased and translated to new defs  WG
+00054                    *
+00055                    * Ed  6 - changed loc of buffer for readline to stack  
+00056                    *
+00057                    * Ed  7 - backported to CC 2.00.00 CJB  12/23/19
+00058                    *
+00059                    * Ed  8 - backported to CC 2.01.00 CJB  12/31/19
+00060                    
+00061  D 0000                     org   0
+00062  D 0000            TSPROC   rmb   1          Child process id
+00063  D 0001            LINPTR   rmb   2          Command line pointer
+00064  D 0003            LINLEN   rmb   2          Command line length
+00065  D 0005            INBUFF   equ   .          Command line buffer
+00066  D 0005                     rmb   250        Stack space
+00067  D 00FF                     rmb   201        room for params
+00068  D 01C8            TSMMEM   equ   .
+00069                    
+
+
+
+XAsm OS-9 Cross Assembler Version 01.00.01    01/01/20 02:02:21      Page 002
+TSMON - OS9 Timesharing terminal monitor
+
+00070    0013 4C4F4749   LOGIN    fcc   "LOGIN"
+00071    0018 0D         TSMEOL   fcb   C$CR
+00072    0019 3B         TSMRTI   rti   
+00073                    
+00074                    **********
+00075                    * Tsmon
+00076                    *   Follow Activity On Input Port
+00077    001A 9F01       TSMON    stx   LINPTR     Save command line ptr
+00078    001C DD03                std   LINLEN     Save command line length
+00079    001E 308CF8              leax  <TSMRTI,PCR
+00080    0021 103F09              os9   F$ICPT     set up dummy intercept
+00081    0024 9E01       TSMON2   ldx   LINPTR     Get command line pointer
+00082    0026 DC03                ldd   LINLEN     And length
+00083    0028 10830002            cmpd  #2         null parameter?
+00084    002C 2524                blo   TSMON6     ..no; use parent's std i/o
+00085    002E A684                lda   0,X        parameter given?
+00086    0030 810D                cmpa  #C$CR
+00087    0032 271E                beq   TSMON6     ..no; use parent's std i/o
+00088    0034 4F                  clra  
+00089    0035 103F8F              os9   I$Close    close std input
+00090    0038 8603                lda   #UPDAT.
+00091    003A 103F84              os9   I$OPEN     Open new std input
+00092    003D 253C                bcs   TSEXIT
+00093    003F 4C                  inca  
+00094    0040 103F8F              os9   I$Close    close std output
+00095    0043 4C                  inca  
+00096    0044 103F8F              os9   I$Close    close std error
+00097    0047 4F                  clra             std in
+00098    0048 103F82              os9   I$DUP      Dup  new std in
+00099    004B 252E                bcs   TSEXIT
+00100    004D 103F82              os9   I$DUP      Dup  new std out
+00101    0050 2529                bcs   TSEXIT
+00102                    
+00103    0052 4F         TSMON6   clra  
+00104    0053 3045                leax  INBUFF,U
+00105    0055 108E0001            ldy   #1
+00106    0059 103F8B              os9   I$ReadLn   wait for terminal activity
+00107    005C 25C6                bcs   TSMON2     ..restart if error
+00108    005E 8601                lda   #OBJCT
+00109    0060 5F                  clrb  
+00110    0061 308CAF              leax  <LOGIN,PCR
+00111    0064 338CB1              leau  <TSMEOL,PCR
+00112    0067 108E0000            ldy   #0
+00113    006B 103F03              os9   F$FORK     start login
+00114    006E 25B4                bcs   TSMON2     Error; restart
+00115    0070 9700                sta   TSPROC     save process id
+00116    0072 103F04     TSMON8   os9   F$WAIT     Wait for death
+00117    0075 9100                cmpa  TSPROC     Child go away?
+00118    0077 26F9                bne   TSMON8
+00119    0079 20A9                bra   TSMON2     ..restart 
+00120    007B 103F06     TSEXIT   os9   F$EXIT     Error exit
+00121                    
+00122    0000 2434B6              emod  Module     Crc
+00123                    
+00124    0081            TSMEND   equ   *
+00125                    
+AttrMask   00f0     BMAPSZ     0020     BootStr    0014     BUFMOD     0001
+C$BELL     0007     C$BSP      0008     C$COMA     002c     C$CR       000d
+C$DEL      0018     C$EOF      001b     C$FORM     000c     C$INTR     0003
+C$LF       000a     C$NULL     0000     C$PAUS     0017     C$PERD     002e
+C$QUIT     0005     C$RPET     0001     C$RPRT     0004     C$SPAC     0020
+C$XOFF     0013     C$XON      0011     Carry      0001     CblCode    0005
+CCode      0004     CFlag0     0017     CFlag1     0018     CFlag2     0019
+CFlag3     001a     CFlag4     001b     CFlag5     001c     CFlag6     001d
+ClocType   0000     Cms9609    000d     Cms9619    0011     Cms9670    0008
+Color      000a     Condem     0002     CPUSpeed   0001     CPUType    000a
+CRCCon1    0080     CRCCon23   0fe3     D$GSTA     0009     D$INIT     0000
+D$PSTA     000c     D$READ     0003     D$TERM     000f     D$WRIT     0006
+D.AltIRQ   006b     D.AProcQ   004d     D.Boot     0083     D.BTHI     0068
+D.BTLO     0066     D.CBStrt   0071     D.ChkCRC   0089     D.Clock    0081
+D.CLTB     0086     D.Day      0055     D.DevTbl   0060     D.DMAReq   006a
+D.DskTmr   006f     D.FIRQ     0030     D.FLAG1    0088     D.FMBM     0020
+D.Hour     0056     D.Init     002a     D.IOMH     005e     D.IOML     005c
+D.IRQ      0032     D.KbdSta   006d     D.Min      0057     D.MLIM     0024
+D.ModDir   0026     D.Month    0054     D.NMI      0036     D.Poll     003a
+D.PolTbl   0062     D.PrcDBT   0049     D.Proc     004b     D.PthDBT   0064
+D.Sec      0058     D.Slice    0048     D.SProcQ   0051     D.SvcIRQ   0038
+D.SWI      0034     D.SWI2     002e     D.SWI3     002c     D.SysDis   0046
+D.SysIRQ   003e     D.SysSvc   0042     D.Tick     0059     D.Time     0053
+D.TSec     005a     D.TSlice   005b     D.URtoSs   0084     D.UsrDis   0044
+D.UsrIRQ   003c     D.UsrSvc   0040     D.WProcQ   004f     D.Year     0053
+Data       0040     DCB4       0002     DD.ATT     000d     DD.BIT     0006
+DD.BSZ     0018     DD.BT      0015     DD.DAT     001a     DD.DIR     0008
+DD.DSK     000e     DD.FMT     0010     DD.MAP     0004     DD.NAM     001f
+DD.OPT     003f     DD.OWN     000b     DD.RES     0013     DD.SIZ     0015
+DD.SPT     0011     DD.TKS     0003     DD.TOT     0000     Dead       0001
+DefIOSiz   000c     DevCnt     000d     Devic      00f0     DEVSIZ     0009
+Digalog    0012     DIR.       0080     DIR.FD     001d     DIR.NM     0000
+DIR.SZ     0020     DiskType   0000     DPort      ff40     Drivr      00e0
+DRVBEG     000f     DRVMEM     0026     DT.Pipe    0002     DT.RBF     0001
+DT.SCF     0000     E$BMCRC    00e8     E$BMHP     00ec     E$BMID     00cd
+E$BMode    00cb     E$BNam     00eb     E$BPAddr   00d2     E$BPNam    00d7
+E$BPNum    00c9     E$BPrcID   00ee     E$BTyp     00f9     E$CEF      00da
+E$CRC      00f3     E$DelSP    00df     E$DevBsy   00fa     E$DevOvf   00cc
+E$DIDC     00fb     E$DirFul   00ce     E$EOF      00d3     E$FNA      00d6
+E$Full     00f8     E$HangUp   00dc     E$IBA      00db     E$IForkP   00e6
+E$IPrcID   00e0     E$ISWI     00e3     E$KwnMod   00e7     E$Lock     00fc
+E$MemFul   00cf     E$MNF      00dd     E$ModBsy   00d1     E$NEMod    00ea
+E$NES      00d5     E$NoChld   00e2     E$NoRam    00ed     E$NoTask   00ef
+E$NotRdy   00f6     E$PNNF     00d8     E$Poll     00ca     E$PrcAbt   00e4
+E$PrcFul   00e5     E$PthFul   00c8     E$Read     00f4     E$Sect     00f1
+E$Seek     00f7     E$Share    00fd     E$SLF      00d9     E$Unit     00f0
+E$UnkSvc   00d0     E$USigP    00e9     E$WP       00f2     E$Write    00f5
+Elektra    0010     Entire     0080     EOF        0010     EOFSEC     0008
+ExDiskII   0003     EXEC.      0004     Exorsr     0014     F$All64    0030
+F$AllBit   0013     F$AllImg   003a     F$AllPrc   004b     F$AllRAM   0039
+F$AllTsk   003f     F$AProc    002c     F$Boot     0035     F$BtMem    0036
+F$Chain    0005     F$CmpNam   0011     F$CpyMem   001b     F$CRC      0017
+F$DATLog   0044     F$DATTmp   0045     F$DelBit   0014     F$DelImg   003b
+F$DelPrc   004c     F$DelTsk   0040     F$ELink    004d     F$Exit     0006
+F$Find64   002f     F$FModul   004e     F$Fork     0003     F$FreeHB   003e
+F$FreeLB   003d     F$GBlkMp   0019     F$GModDr   001a     F$GPrDsc   0018
+F$GProcP   0037     F$Icpt     0009     F$ID       000c     F$IODel    0033
+F$IOQu     002b     F$IRQ      002a     F$LDABX    0049     F$LDAXY    0046
+F$LDAXYP   0047     F$LDDDXY   0048     F$Link     0000     F$Load     0001
+F$Mem      0007     F$Move     0038     F$NProc    002d     F$PErr     000f
+F$PrsNam   0010     F$RelTsk   0043     F$ResTsk   0042     F$Ret64    0031
+F$SchBit   0012     F$Send     0008     F$SetImg   003c     F$SetTsk   0041
+F$Sleep    000a     F$SLink    0034     F$SPrior   000d     F$SRqMem   0028
+F$SRtMem   0029     F$SSpd     000b     F$SSvc     0032     F$SSWI     000e
+F$STABX    004a     F$STime    0016     F$SUser    001c     F$Time     0015
+F$UnLink   0002     F$UnLoad   001d     F$VModul   002e     F$Wait     0004
+false      0000     FD.ATT     0000     FD.Creat   000d     FD.DAT     0003
+FD.LNK     0008     FD.LS1     013b     FD.LS2     00fa     FD.OWN     0001
+FD.SEG     0010     FD.SIZ     0009     FDBUF      0004     FDSL.A     0000
+FDSL.B     0003     FDSL.S     0005     FIRQMask   0040     FlMgr      00d0
+FMCDIR     0009     FMCLOS     001e     FMCREA     0000     FMDLET     000c
+FMGSTA     0018     FMMDIR     0006     FMOPEN     0003     FMREAD     0012
+FMSEEK     000f     FMSSTA     001b     FMWRIT     0015     FrtnCode   0006
+G68        0001     Gimix      0001     Gimix2     0009     H58        0005
+HalfCrry   0020     Helix      0006     I$Attach   0080     I$ChgDir   0086
+I$Close    008f     I$Create   0083     I$Delete   0087     I$DeletX   0090
+I$Detach   0081     I$Dup      0082     I$GetStt   008d     I$MakDir   0085
+I$Open     0084     I$Read     0089     I$ReadLn   008b     I$Seek     0088
+I$SetStt   008e     I$Write    008a     I$WritLn   008c     ICode      0002
+ImgChg     0010     INBUFF     0005     InitStr    000e     IntMasks   0050
+IRQMask    0010     Kodak      0003     LangMask   000f     LEVEL      0001
+LINLEN     0003     LINPTR     0001     LOGIN      0013     M$DTyp     0012
+M$Exec     0009     M$FMgr     0009     M$ID       0000     M$ID1      0087
+M$ID12     87cd     M$ID2      00cd     M$IDSize   0009     M$Mem      000b
+M$Mode     000d     M$Name     0004     M$Opt      0011     M$Parity   0008
+M$PDev     000b     M$Port     000e     M$Revs     0007     M$Size     0002
+M$Type     0006     M58167     0003     MaxMem     0009     MC146818   0004
+MC6840     0001     MINSEC     0010     Mm19       000e     MotGED     0004
+MPT        0005     Multi      0030     Negative   0008     NumPaths   0010
+Objct      0001     OneMHz     0001     OPTCNT     001a     P$ADDR     0007
+P$Age      000c     P$CHAP     0006     P$CID      0003     P$DIO      001a
+P$ID       0000     P$IOQN     0011     P$IOQP     0010     P$NIO      003b
+P$PagCnt   0008     P$PATH     0026     P$PID      0001     P$PModul   0012
+P$Prior    000b     P$Queue    000e     P$SID      0002     P$SigDat   0039
+P$Signal   0036     P$SigVec   0037     P$Size     0040     P$SP       0004
+P$State    000d     P$SWI      0014     P$SWI2     0016     P$SWI3     0018
+P$User     0009     PCode      0003     PD.ALF     0025     PD.ATT     0033
+PD.BAU     0035     PD.BSE     0032     PD.BSO     0022     PD.BSP     0029
+PD.BUF     0008     PD.CNT     0002     PD.CP      000b     PD.CPR     0005
+PD.CYL     0025     PD.D2P     0036     PD.DCP     003a     PD.DEL     002a
+PD.DEV     0003     PD.DFD     0037     PD.DLO     0023     PD.DNS     0024
+PD.DRV     0021     PD.DSK     001c     PD.DTB     001e     PD.DTP     0020
+PD.DUP     002e     PD.DV2     000a     PD.DVT     003e     PD.EKO     0024
+PD.EOF     002c     PD.EOR     002b     PD.ERR     003a     PD.Exten   0030
+PD.FD      0034     PD.FST     000a     PD.ILV     002d     PD.INT     0030
+PD.MAX     000d     PD.MIN     000f     PD.MOD     0001     PD.NUL     0026
+PD.OPT     0020     PD.OVF     0033     PD.PAG     0028     PD.PAR     0034
+PD.PAU     0027     PD.PD      0000     PD.PSC     002f     PD.QUT     0031
+PD.RAW     000c     PD.RGS     0006     PD.RPR     002d     PD.SAS     002e
+PD.SBL     0013     PD.SBP     0016     PD.SCT     0029     PD.SID     0027
+PD.SIZ     000f     PD.SMF     000a     PD.SSZ     0019     PD.STM     0012
+PD.STP     0022     PD.STS     0010     PD.T0S     002b     PD.TBL     003b
+PD.TFM     002f     PD.TYP     0023     PD.UPC     0021     PD.VFY     0028
+PD.XOFF    0039     PD.XON     0038     PD5        0004     PDELIM     002f
+PDIR       002e     PDSIZE     0040     PENTIR     0040     Percom     000f
+PEXEC.     0020     PollCnt    000c     POLSIZ     0009     PosiDisk   0006
+Positron   0007     PREAD.     0008     Prgrm      0010     Primal     0005
+ProfDisk   0007     Profitel   0008     ProtFlag   0016     PWRIT.     0010
+Q$FLIP     0002     Q$MASK     0003     Q$POLL     0000     Q$PRTY     0008
+Q$SERV     0004     Q$STAT     0006     R$A        0001     R$B        0002
+R$CC       0000     R$D        0001     R$DP       0003     R$PC       000a
+R$Size     000c     R$U        0008     R$X        0004     R$Y        0006
+RCDLOCK    0000     READ.      0001     ReEnt      0080     RevsMask   000f
+S$Abort    0002     S$Intrpt   0003     S$Kill     0000     S$Wake     0001
+S09        000b     Sat96      0013     Sbrtn      0020     SHARE.     0040
+Sign       0080     SINBUF     0002     SS.AlfaS   001c     SS.BlkRd   0014
+SS.BlkWr   0015     SS.Break   001d     SS.Close   002a     SS.ComSt   0028
+SS.Cursr   0025     SS.DCmd    000d     SS.DevNm   000e     SS.DStat   0012
+SS.ELog    0019     SS.EOF     0006     SS.FD      000f     SS.Feed    0009
+SS.Frz     000a     SS.HngUp   002b     SS.Joy     0013     SS.KySns   0027
+SS.Link    0007     SS.Lock    0011     SS.Open    0029     SS.Opt     0000
+SS.Pos     0005     SS.Ready   0001     SS.Relea   001b     SS.Reset   0003
+SS.Reten   0016     SS.RFM     0018     SS.RsBit   001e     SS.ScSiz   0026
+SS.SetMF   0024     SS.Size    0002     SS.SPT     000b     SS.SQD     000c
+SS.SSig    001a     SS.Ticks   0010     SS.ULink   0008     SS.WFM     0017
+SS.WTrk    0004     SSB        0002     StdStr     0012     SVCTNM     0002
+SVCTSZ     006e     Swtc       000c     SysState   0080     SysStr     0010
+Systm      00c0     TimOut     0020     TimSleep   0040     true       0001
+TSEXIT     007b     TSMEND     0081     TSMEOL     0018     TSMMEM     01c8
+TSMNAM     000d     TSMON      001a     TSMON2     0024     TSMON6     0052
+TSMON8     0072     TSMRTI     0019     TSPROC     0000     TwoMHz     0002
+TwosOvfl   0002     TypeMask   00f0     UPDAT.     0003     V$DESC     0004
+V$DRIV     0000     V$FMGR     0006     V$STAT     0002     V$USRS     0008
+V.BMapSz   001c     V.BMB      0017     V.BUSY     0004     V.DEV2     0009
+V.DiskID   001a     V.ERR      000e     V.FileHd   0018     V.INTR     000b
+V.LINE     0007     V.LPRC     0003     V.MapSct   001d     V.NDRV     0006
+V.PAGE     0000     V.PAUS     0008     V.PCHR     000d     V.PORT     0001
+V.QUIT     000c     V.RSV      0011     V.SCF      001d     V.TRAK     0015
+V.TYPE     0006     V.USER     0006     V.WAKE     0005     V.XOFF     0010
+V.XON      000f     VIA        0002     WRITE.     0002     Zero       0004
+
+
+00000 error(s)
+00000 warning(s)
+$0081 00129 program bytes generated
+$01C8 00456 data bytes generated

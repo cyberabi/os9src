@@ -29,7 +29,7 @@
  mod TSMEND,TSMNAM,PRGRM+OBJCT,REENT+1,TSMON,TSMMEM
 TSMNAM fcs "Tsmon"
 
- fcb 7 edition number
+ fcb 8 edition number
 *********************
 * Edition History
 *
@@ -40,13 +40,16 @@ TSMNAM fcs "Tsmon"
 * Ed  6 - changed loc of buffer for readline to stack  WGP  12/3/82
 *
 * Ed  7 - backported to CC 2.00.00 CJB  12/23/19
+*
+* Ed  8 - backported to CC 2.01.00 CJB  12/31/19
 
  org 0
 TSPROC rmb 1 Child process id
 LINPTR rmb 2 Command line pointer
 LINLEN rmb 2 Command line length
- rmb 250 Stack space
- rmb 200 room for params
+INBUFF equ . Command line buffer
+  rmb 250 Stack space
+ rmb 201 room for params
 TSMMEM equ .
 
 LOGIN fcc "LOGIN"
@@ -58,51 +61,47 @@ TSMRTI rti
 *   Follow Activity On Input Port
 TSMON stx LINPTR Save command line ptr
  std LINLEN Save command line length
-TSMON2 cmpd #2 null parameter?
- blo TSMON4 ..no; use parent's std i/o
+ leax <TSMRTI,PCR
+ OS9 F$ICPT set up dummy intercept
+TSMON2 ldx LINPTR Get command line pointer
+ ldd LINLEN And length
+ cmpd #2 null parameter?
+ blo TSMON6 ..no; use parent's std i/o
  lda 0,X parameter given?
  cmpa #C$CR
- beq TSMON4 ..no; use parent's std i/o
+ beq TSMON6 ..no; use parent's std i/o
  clra
  OS9 I$Close close std input
+ lda #UPDAT.
+ OS9 I$OPEN Open new std input
+ bcs TSEXIT
  inca
  OS9 I$Close close std output
  inca
  OS9 I$Close close std error
- lda #UPDAT.
- OS9 I$OPEN Open new std input
+ clra std in
+ OS9 I$DUP Dup  new std in
  bcs TSEXIT
- OS9 I$DUP Dup  new std output
+ OS9 I$DUP Dup  new std out
  bcs TSEXIT
- OS9 I$DUP Dup  new std error
- bcs TSEXIT
-TSMON4 leax <TSMRTI,PCR
- OS9 F$ICPT set up dummy intercept
 
 TSMON6 clra
- leax ,-S
+ leax INBUFF,U
  ldy #1
  OS9 I$ReadLn wait for terminal activity
- leas 1,S
- bcc TSMON7
- cmpb #E$HangUp fatal error?
- bne TSMON6 ..no; retry
- bra TSMON9
-TSMON7 lda #OBJCT
+ bcs TSMON2 ..restart if error
+ lda #OBJCT
  clrb
  leax <LOGIN,PCR
  leau <TSMEOL,PCR
  ldy #0
  OS9 F$FORK start login
- bcs TSMON6 Error; restart
+ bcs TSMON2 Error; restart
  sta TSPROC save process id
 TSMON8 OS9 F$WAIT Wait for death
  cmpa TSPROC Child go away?
  bne TSMON8
-TSMON9 ldx LINPTR Reset line pointer
- ldd LINLEN Reset line length
- bra TSMON2 ..restart
-
+ bra TSMON2 ..restart 
 TSEXIT OS9 F$EXIT Error exit
 
  emod Module Crc
