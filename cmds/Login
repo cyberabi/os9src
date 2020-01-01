@@ -25,7 +25,7 @@
  mod LOGEND,LOGNAM,PRGRM+OBJCT,REENT+1,LOGIN,LOGMEM
 LOGNAM fcs "Login"
 
- fcb 12 edition number
+ fcb 18 edition number
 
 *********************
 * Edition History
@@ -38,6 +38,12 @@ LOGNAM fcs "Login"
 *
 * Ed 12 - Long and short messages, buffered output,
 *         CC 2.00.00                               CJB 12/23/19
+*
+* Ed 17 - Fixed for years 1900-2155                BGP 05/11/99
+*
+* Ed 18 - Changed icpt routine rts to rti,         BGP 01/29/10
+*         put in conditionals for Level One not
+*         to execute the os9 F$SUser command.
 
 MAXTRY set 3 Num of login attempts permitted
 LINSIZ set 80 Input line buffer size
@@ -92,19 +98,21 @@ PSWFIL fcc "SYS/"
  fcb C$CR
  fcc ",,,,,,,,,,,,,,," room for password name patching
 TSMSG fcb C$LF,C$LF
- fcc "OS-9 Timesharing system   "
+ fcc "OS-9 Timesharing system"
+ fcb C$LF
  ifeq LEVEL-1
- fcc "Level I 01.02.00"
+ fcc "Level I  RS VR. 02.01.00"
  else
- fcc "Level II 01.01.00"
+ fcc "Level II  RS VR. 01.01.00"
  endc
+ fcb C$LF
 TSMSZ equ *-TSMSG
 TSMSG2 fcb C$LF,C$LF
  fcc "OS-9 "
  ifeq LEVEL-1
- fcc "Level I 01.02.00"
+ fcc "Level I  RS VR. 02.01.00"
  else
- fcc "Level II 01.01.00"
+ fcc "Level II  RS VR. 01.01.00"
  endc
  fcb C$LF
 TSMSZ2 equ *-TSMSG2
@@ -142,13 +150,25 @@ MOTDFL fcc "SYS/"
  fcb C$CR
 ROOT fcc "......" path to root
  fcb C$SPAC
-pag
+
+ pag
+**********
+* IcptRtn
+*   Intercept signals
+IcptRtn rti
+
+ pag
 **********
 * Login
 *   Login New User, Establishing (From Password File)
 *   User-Id, Priority, Exec-Dir, Data-Dir, Shell-Program
 
 LOGIN leas STKTOP,U move stack to relative safety
+ pshs Y,X
+ leax <IcptRtn,PCR Catch signals
+ OS9 F$Icpt
+ puls X,Y
+ lbcs LOG90 Exit if error
  clr OPTL Assume wide screen
  leay OUTBUF,U
  sty OUTPTR
@@ -167,8 +187,8 @@ LOG04 lda #1 Standard out
  cmpb #E$UnkSvc Fatal error?
  beq LOG04B
  lbra LOG50
-LOG04A cmpx #80 Wide screen?
- beq LOG04B
+LOG04A cmpx #70 Wide screen?
+ bcc LOG04B
  inc OPTL set narrow screen
 LOG04B lda #READ.
  leax ROOT,PCR Get root pathlist
@@ -238,10 +258,7 @@ LOG40 lda PSWPTH
  lbsr GETNUM User number from password file
 
  ifeq LEVEL-1
-***** Illegal Oper *****
- ldy >D.PROC
- std P$USER,Y Save new user number
-***** End Ill Oper *****
+ tfr D,Y
  else
  tfr D,Y
  OS9 F$SUser Set new User Index
@@ -514,7 +531,27 @@ PRTI10 lda #C$COLN
 * Prtdat
 *   Print "MM/DD/YY"
 *
-PRTDAT bsr PRTNUM
+PRTDAT ldb 0,X Get year
+ cmpb #100 Too big?
+  bcs PRTY19 If carry set, 19xx century
+ subb #100
+ cmpb #100 Still too big?
+  bcs PRTY20 If carry set, 20xx century
+ subb #100
+
+ stb ,X
+ ldb #21 Year is 21xx
+ bra PRTYR
+
+PRTY19 stb ,X
+ ldb #19 Year is 19xx
+ bra PRTYR
+
+PRTY20 stb ,X
+ ldb #20 Year is 20xx
+
+PRTYR bsr PRTNUM1 Print century
+ bsr PRTNUM Print years
  bsr PRTD10
 PRTD10 lda #C$SLSH
 PRTD20 bsr BUFCHR
@@ -526,7 +563,7 @@ PRTD20 bsr BUFCHR
 *   Print 8-Bit Ascii Number In (,X+)
 *
 PRTNUM ldb ,X+
- lda #'0-1
+PRTNUM1 lda #'0-1
  clr SIGNIF ..no significant digits
 PRTN10 inca Form Hundreds digit
  subb #100
