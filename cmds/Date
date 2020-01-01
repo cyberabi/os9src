@@ -18,12 +18,15 @@
  mod DATEND,DATNAM,PRGRM+OBJCT,REENT+1,DATE,DATMEM
 DATNAM fcs "Date"
 
- fcb 4 edition number
+ fcb 6 edition number
 *******************
 * REVISION HISTORY
 * edition 3: prehistoric
 * edition 4: copyright notice removed from object 
 *            stack and param space reserved
+* edition 5: made Y2K compliant
+* edition 6: Match 02.01.00
+*            made compliant with 1900-2155
 *******************
 
 
@@ -50,7 +53,7 @@ DATBUF rmb 40 output buffer
  rmb 200 room for params
 DATMEM equ .
 
-DATSEP fcs ", 19"
+DATSEP fcs ", "
 
 MONTHS fcs "??? "
  fcs "January "
@@ -125,8 +128,35 @@ PRTD30 bsr PRTNAM Print month name
  ldb S.DY
  bsr PRTNUM Print day
  leay DATSEP,PCR
- bsr PRTNAM Print ", 19"
+ bsr PRTNAM Print ", "
  ldb S.YR Print year
+ cmpb #100 Y2K?
+ bcs PRTY19 ..no; print as 19xx
+ subb #100 Convert to 0..99
+ cmpb #100 Too big?
+ bcs PRTY20 ..no; print as 20xx
+ subb #100 Convert to 0..99
+ pshs B
+ ldb #21 Print as 21xx
+ bra PrtYr
+
+PRTY20 pshs B
+ ldb #20 Print as 20xx
+ bra PrtYr
+
+PRTY19 pshs B
+ ldb #19
+
+*****
+* PrtYr
+*   Print 16-bit binary-coded centimal Ascii year
+*
+* Passed: (B)=Two-digit century
+*         (S)=Two-digit year
+* Destroys: (D)
+*
+PrtYr bsr Prtnum Print century
+ puls B Get year
 
 *****
 * Prtnum
