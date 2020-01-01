@@ -25,10 +25,14 @@ Revs set REENT+1
  mod STimEnd,STimNam,Type,Revs,STimEnt,STmem
 STimNam fcs "Setime"
 
- fcb 9 Edition number
+ fcb 10 Edition number
 *****
 * REVISION HISTORY
 * edition 8: prehistoric
+*
+* edition 9: prehistoric
+*
+* edition 10: Cmade Y2K compliant
 *****
 
 *****
@@ -54,7 +58,7 @@ BADCLK fcb C$LF,C$LF,C$Bell
 BADCSZ equ *-BADCLK
 
 CLKPRT fcb C$LF
- fcc "       yy/mm/dd hh:mm:ss"
+ fcc "       yyyy/mm/dd hh:mm:ss"
  fcb C$LF
  fcc "Time ? "
 CLKPSZ equ *-CLKPRT
@@ -67,6 +71,7 @@ CLKPSZ equ *-CLKPRT
 
 * Stacked Time offsets
  org 0
+Century rmb 1
 Year rmb 1
 Month rmb 1
 Day rmb 1
@@ -85,10 +90,20 @@ STimEnt cmpd #2 More than cr?
  leax 0,S Get buffer ptr
  lda #$D Set end of line
  sta 0,X .. in case of error
- ldy #19 Get buffer size
+ ldy #21 Get buffer size
  clra Get Input path
  OS9 I$ReadLn Get time line
-STim10 leas -Time,S get scratch
+STim10 lda ,X+
+ cmpa #$D Empty?
+ beq STim90 ..yes; exit
+ cmpa #$20 Space?
+ beq STim10 ..yes; ignore
+ cmpa #', Comma?
+ beq STim10 ..yes; ignore
+ leax -1,X Back up
+ leas -Time,S get scratch
+ bsr NXTNUM Get year
+ stb Century,S
  bsr NXTNUM Get year
  stb Year,S
  bsr NXTNUM Get month
@@ -101,6 +116,12 @@ STim10 leas -Time,S get scratch
  stb Minute,S
  bsr NXTNUM Get second
  stb Second,S
+ ldb ,S Get century
+ subb #19
+ lda #100 Multiply difference by 100
+ mul
+ addb Year,S Add year to century
+ stb Year,S Save as new year
  leax Year,S
  OS9 F$STime Set time
  bcc STim90 ..No error; done
