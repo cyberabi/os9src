@@ -36,7 +36,7 @@
  mod PEREND,PERNAM,PRGRM+OBJCT,REENT+1,PRTERR,PERMEM
 PERNAM fcs "Printerr"
 
- fcb 6 edition number
+ fcb 7 edition number
 
 *********************
 * Edition History
@@ -44,6 +44,8 @@ PERNAM fcs "Printerr"
 * Ed  5 - Beginning of history
 *
 * Ed  6 - Conditionals added for LI, LII assembly  WGP  12/2/82
+*
+* Ed  7 - Changed /D0 to /DD                       BGP  7/13/02
 
  pag
 
@@ -60,7 +62,7 @@ IOBUFF rmb BUFSIZ Line buffer
  rmb 1 anonymous scratch
 PERMEM equ .
 
-ERRFIL fcc "/D0/"
+ERRFIL fcc "/DD/"
  fcc "SYS/"
  fcc "ERRMSG"
  fcb C$CR
