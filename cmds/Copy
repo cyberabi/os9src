@@ -32,8 +32,9 @@
 * 06 83/02/29 Does internal verify when output is RBF device,
 *              disabling write verify.  Copies much faster now. RFD
 * 07 83/03/07 Use SS.FD I$SetStt to preserve file statistics.   KKK
+* 09 19/12/31 Match OS9 Level 1 V 2.01.00.                      CJB
 
-Edition equ 7 current edition
+Edition equ 9 current edition
 
  mod CPYEND,CPYNAM,PRGRM+OBJCT,REENT+1,COPY,CPYMEM
 CPYNAM fcs "Copy"
@@ -66,6 +67,7 @@ FileSize rmb 4 size of file
 FilePtr rmb 4 current file position
 Single rmb 1 0=Don't prompt for disk switch
 OutAttr rmb 1 Attributes for output
+FDBuff rmb 16 Input stats
 FileOpts rmb PD.OPT Path options buffer
  rmb $200-. stack space
 StackTop equ .
@@ -144,6 +146,13 @@ COPY10 puls X Restore parameter pointer
  lbra COPY99 ..exit if error
 
 COPY11 sta InpPath Save input path number
+ pshs x
+ leax FDBuff,u Storage for file desc
+ ldy #16 copy 16 bytes
+ ldb #SS.FD
+ os9 I$GetStt Get file desc
+ puls x
+ bcs COPY12
  tst Single Single drive copy?
  beq COPY12 ..no
  lda 0,X Get first char of output path
@@ -174,12 +183,13 @@ COPY12 pshs X Save pathname pointer
 COPY14 stb OutAttr Save attributes for output
 
 * Open output path
- puls X Restore pathname pointer
+ ldx 0,S Restore pathname pointer
  lda #C$Dest (Destination)
  lbsr RDYDRV print "Ready destination"
  lda #UPDAT. try to open (disk) file for update
  ldb OutAttr get output attributes
  OS9 I$Create
+ puls X Clean stack
  bcc COPY16 ..success
  inc Verify Internal verification is impossible
  lda #WRITE. try to open as write only
@@ -219,14 +229,10 @@ COPY19 lda InpDTP source device type
  lbcs COPY99 ..abort if error
  puls U Restore data address
 
- leax FileOpts,u FD buffer area
- ldy #16 copy 16 bytes
- lda InpPath Input path
- ldb #SS.FD get FD code
- OS9 I$GetStt Get FD date bytes
- bcs COPY20 ..bra if error
  lda OutPath output path
- ldb #SS.FD set FD code
+ leax FDBuff,u FD buffer area
+ ldy #16 copy 16 bytes
+ ldb #SS.FD get FD code
  OS9 I$SetStt write the date bytes
 
 * Perform the copy
