@@ -16,8 +16,10 @@
 *  4 ??/??/?? Buffered Bitmap sector I/O.
 *  5 83/01/13 Added quotes around disk name
 *  6 83/04/01 Increased Bitmap buffer from 256 to 4096 bytes
+*  7 19/12/31 Backport of Y2K fix from 02.01.00
 
-Edition equ 6 current edition number
+Edition equ 7 current edition number
+rev equ $00 current version number
  use defsfile
 
 **********
@@ -28,7 +30,7 @@ Edition equ 6 current edition number
 * Defaults to current data directory
 * Also shows Volume name, create date, capacity.
 
- mod FREEND,FRENAM,PRGRM+OBJCT,REENT+1,FREE,FREMEM
+ mod FREEND,FRENAM,PRGRM+OBJCT,REENT+rev,FREE,FREMEM
 FRENAM fcs "Free"
  fcb Edition
  pag
@@ -56,7 +58,6 @@ LARGST rmb 3 Largest disk block (sectors)
 SEGMNT rmb 3 Temp largest disk block
 FRLBUF rmb 80 Output line buffer
 DSKBUF rmb DD.NAM+32 Device descriptor buffer
-NAMLIM rmb 1
 BMAPEND rmb 2 end of bitmap ptr
 BITBUFF rmb BITBUFSZ Bitmap Buffer
  rmb 250 stack room
@@ -64,7 +65,7 @@ BITBUFF rmb BITBUFSZ Bitmap Buffer
 FREMEM equ . Total static storage requirement
 
 USAGE fcb C$LF
- fcc "Use: Free [/diskname]"
+ fcc "Use: free [/diskname]"
  fcb C$LF
  fcc "  tells how many disk sectors are unused"
  fcb C$CR
@@ -74,7 +75,7 @@ CREATE fcb '"
 CAPCTY fcs "Capacity:"
 SECTRS fcs " sectors ("
 CLUSTR fcs "-sector clusters)"
-SPACE fcs " Free sectors, largest block"
+SPACE fcs " free sectors, largest block"
 LONG fcs " sectors"
 
  pag
@@ -125,8 +126,6 @@ FREE35 lbcs FREE90 ..error; exit
  lda #'" get quote char
  lbsr FROCHR insert leading quote
  leay DSKBUF+DD.NAM,U
- lda #'?+$80
- sta NAMLIM,U insure good end of name mark
  lbsr FRNAME Put disk name in i/o buffer
  dec LINPOS+1 eliminate trailing space
  leay CREATE,PCR
@@ -360,7 +359,7 @@ FRIT40 puls D,X,Y,PC Return
 *   Print "YY/MM/DD HH:MM:SS"
 *
 FRDATE leax DSKBUF+DD.DAT,U
- bsr FRPNUM Print yy
+ bsr PRTYR Print yyyy
  bsr FRDT10 Print /mm
 FRDT10 lda #C$SLSH
  lbsr FROCHR Print slash, then number
@@ -376,7 +375,7 @@ FRPN10 inca FORM Hundred digit
  subb #100
  bcc FRPN10
  bsr FRZSUP
- lda #10
+FRPN15 lda #10
  sta ZERSUP Print at least two digits
 FRPN20 deca FORM Tens digit
  addb #10
@@ -397,6 +396,18 @@ FRZSUP tsta ZERO?
 FRZS10 tst ZERSUP Zero suppression?
  bne FRZS20 ..no; print digit
  rts
+
+* Y2K fix for dates
+PRTYR ldb ,X+ Get year
+ lda #255-80-1 Magic number for code at FRPN15
+PRTYR1 inca
+ subb #100
+ bcc PRTYR1
+ pshs B
+ tfr A,B
+ bsr FRPN15 For 19xx, add 9 tens to B overflow; for 20xx/21xx add 8 tens
+ puls B Get year
+ bra FRPN15 Print it
 
 FRZS20 adda #'0
  lbra FROCHR
