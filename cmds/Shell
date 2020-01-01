@@ -23,8 +23,9 @@
 * 18 02/10/83  Clear Mem size (#K) parameter between pipes  RFD
 * 19 03/28/83  Clean up signal processing; fix #201 error.  RFD
 * 20 03/29/83  Fix bug generated in edition 19.  (wait)     RFD
+* 21 01/22/03  CHD no longer sets WRITE. permission         BGP
 
-Edition equ 20 current edition
+Edition equ 21 current edition
 
  mod SHLEND,SHLNAM,PRGRM+OBJCT,REENT+1,SHELL,SHLMEM
 SHLNAM fcs "Shell"
@@ -487,7 +488,7 @@ CLSPTH pshs A
 SHCXDR lda #DIR.+EXEC. Change exec dir
  bra SHCD10
 
-SHCDIR lda #DIR.+UPDAT. Change data dir
+SHCDIR lda #DIR.+READ. Change data dir
 SHCD10 OS9 I$ChgDir Change directory
  rts
 
