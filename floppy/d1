@@ -100,7 +100,7 @@ Density set 0
  else
 Density set 1
  endc
-IntrLeav set 4
+IntrLeav set 2
 
  use Desc_module
 
