@@ -10,8 +10,23 @@ Type set DEVIC+OBJCT
 Revs set REENT+1
  mod DescEnd,DescName,Type,Revs,DscMgr,DscDrv
  fcb DIR.+SHARE.+PREAD.+PWRIT.+UPDAT.+EXEC.+PEXEC.
+ ifeq CPUType-Color
+ fcb $FF
+ else
  fcb $F
+ endc
  fdb DPort port address
+ ifeq DrvSiz-630
+DrvTyp set $20 5" drive (Color Computer)
+Cyls set 35
+ ifeq Densy
+SecTrk set 18
+SecTr0 set 18
+ else
+SecTrk set 18
+SecTr0 set 18
+ endc
+ endc
  ifeq DrvSiz-535
 DrvTyp set 0 5" drive
 Cyls set 35
@@ -74,17 +89,9 @@ SecTr0 set 16
  fdb SecTr0
  fcb IntrLeav Sector interleave offset
  fcb 8 Sector allocation size
- ifeq Pass
-DescName equ *
- endc
- fcb 'D,'0+Drive+$80
- ifeq Pass
-DscMgr equ *
- endc
- fcs "RBF" Rbfman
- ifeq Pass
+DescName fcb 'D,'0+Drive+$80
+DscMgr fcs "RBF" Rbfman
 DscDrv equ *
- endc
  ifeq NamSiz-2
  fcb L1,L2+$80
  endc
@@ -102,13 +109,5 @@ DscDrv equ *
  endc
 
  emod
- ifeq Pass
 DescEnd equ *
 
-Pass set 1
- endc
-
-Drive set Drive+1
- ifne DriveCnt-Drive
- use desc_module
- endc
