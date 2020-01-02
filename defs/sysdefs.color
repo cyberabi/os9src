@@ -1,5 +1,7 @@
 CPUType set Color
 ClocType set 0
 
+DiskType set FD501
+DriveCnt set 4
 DPort set $FF40
 
