@@ -39,11 +39,12 @@
  fcb DIR.+SHARE.+PREAD.+PWRIT.+UPDAT.+EXEC.+PEXEC.
 DSKNAM fcs "CCDisk"
 
- fcb 2 Edition telltale byte
+ fcb 4 Edition telltale byte
 *******************
 * Revision History
 * edition 1: prehistoric
 * edition 2: backported from GIMIX DC3 driver            CJB
+* edition 4: backported from CoCo Level 1 02.00.00       CJB
 *******************
 
  pag
@@ -59,6 +60,7 @@ CURTBL rmb 2 Ptr to current drive tbl
 CURDRV rmb 1 Drive select bit pattern
 V.DOSK rmb 1 Force seek flag
 V.BUF rmb 2 Local buffer addr
+V.VIRQ rmb 5 Virtual interrupt descriptor
 DSKSTA equ . Total static requirement
 
 
@@ -127,8 +129,13 @@ VV.NMI set $0109 NMI hook
 *           (Y) Unchanged
 *           (U) Unchanged
 *
+
+IRQPOLL fcb %00000000 Flip; all active high
+ fcb %00000001 Mask; bit 0 ony
+ fcb 10 Priority
+
 INIDSK clra Haven't spun up motors yet
- sta >D.DskTmr
+ sta <D.DskTmr
  ldx #DPort Point to i/o port
  leax DP.CmdR,X Point to command register
  lda #F.TYP1
@@ -147,6 +154,14 @@ INILUP sta DD.TOT,X Inz to non-zero
  stx VV.NMI+1
  lda #$7E JMP opcode
  sta VV.NMI+0
+ pshs Y
+ leay (V.VIRQ+VI.Stat),U get address to poll
+ tfr Y,D
+ leay IRQSERVC,PCR point to IRQ service routine
+ leax IRQPOLL,PCR point to IRQ packet
+ OS9 F$IRQ add dev to poll sequence
+ puls Y
+ bcs RETRN1 error; exit
  ldd #256 "d" passes memory req size
  pshs U Save "u" we need it later
  OS9 F$SRqMem Request 1 pag of mem
@@ -154,10 +169,9 @@ INILUP sta DD.TOT,X Inz to non-zero
  puls U
  bcs RETRN1 ..oh ..oh; no mem available
  stx V.BUF,U Save for future use
- clrb
-RETRN1 rts
 
- pag
+* Fall through to no-error exit
+
 ************************************************************
 *
 * Stubs
@@ -169,8 +183,8 @@ RETRN1 rts
 *
 Getsta equ *
 Termnt equ *
- clrb No error
- rts
+ clrb no error
+RETRN1 rts
 
  pag
 *************************************************************
@@ -221,17 +235,8 @@ READSC lbsr PHYSIC Move head to track
  bcs READ09
  ldx PD.BUF,Y Point to buffer
  pshs Y,CC Save irq mask info
- orcc #IRQMask+FIRQMask Disable interrupts
- ldy #$FFFF Max delay
- ldb #F.READ Read sector command
- stb DPort+DP.CmdR Send command
- ldb #DDMtrOn Double dns w/ motor on
- orb CURDRV,U Selected drive
- stb DPort+DP.Ctrl Set control
- ldb #HltDDMtr Enable HALT
- orb CURDRV,U Selected drive
- lbsr DELAY1
- lda #%00000010 Data request bit
+ ldb #F.READ
+ bsr SETUP
 READS1 bita DPort+DP.CmdR Ready?
  bne READS2 ..yes; continue
  leay -1,Y
@@ -251,6 +256,23 @@ READS2 lda DPort+DP.DatR Get data
  sta ,X+ Store it
  stb DPort+DP.Ctrl Refresh control
  bra READS2
+
+ pag
+************************************************************
+*
+* Set up read or write command
+*
+SETUP orcc #IRQMask+FIRQMask Disable interrupts
+ stb DPort+DP.CmdR Send command
+ ldy #$FFFF Max delay
+ ldb #DDMtrOn Double dns w/ motor on
+ orb CURDRV,U Selected drive
+ stb DPort+DP.Ctrl Set control
+ ldb #HltDDMtr Enable HALT
+ orb CURDRV,U Selected drive
+ lbsr DELAY1
+ lda #%00000010 Data request bit
+ rts
 
  pag
 ***************************************************************
@@ -275,34 +297,25 @@ WRTDS1 pshs D,X Save regs
  bcs WRTDS3 Write error; try again.
  tst PD.VFY,Y Verify desired?
  bne WRTDS9 ...no; all is well.
- lbsr Wrtvfy Go verify sector
+ bsr Wrtvfy Go verify sector
  bcs WRTDS3 Error; ...retry
 WRTDS9 clrb No error
- rts
+WRTDS99 rts
 WRTDS3 lsra
- lbeq ERWRITE Retries done; ...exit
+ lbeq STCK0 Retries done; ...exit
  bcc WRTDS1 Retry without restore
  pshs D,X
  lbsr RESTOR Restore drive
  puls D,X
  bra WRTDS1 Retry after restore
 
-WRITSC lbsr PHYSIC
- lbcs READ09
+WRITSC bsr PHYSIC
+ bcs WRTDS99
  ldx PD.BUF,Y Buffer addr
  ldb #F.WRIT Write function code
 
 WRITS1 pshs Y,CC Save irq mask info
- orcc #IRQMask+FIRQMask Disable interrupts
- ldy #$FFFF Max delay
- stb DPort+DP.CmdR Send command
- ldb #DDMtrOn Double dns w/ motor on
- orb CURDRV,U Selected drive
- stb DPort+DP.Ctrl Set control
- ldb #HltDDMtr Enable HALT
- orb CURDRV,U Selected drive
- lbsr DELAY1
- lda #%00000010 Data request bit
+ bsr SETUP
 WRITS2 bita DPort+DP.CmdR Ready?
  bne WRITE3 ..yes; continue
  leay -1,Y
@@ -311,7 +324,7 @@ WRITS2 bita DPort+DP.CmdR Ready?
  ora #MotorOn Motors stay on
  sta DPort+DP.Ctrl
  puls Y,CC
- lbra ERWRITE Timeout
+ lbra STCK0 Timeout
 
  pag
 **************************************************************
@@ -482,6 +495,7 @@ SELCT5 puls D,X,PC Return (carry clear)
 *
 *  If No Error: Carry Is Clear
 *
+STCK0 ldb DPort+DP.CmdR
 STCK bitb #%11111000 Any possible error bits set?
  beq STCK9 ..no; exit
  bitb #%10000000 Drive ready?
@@ -535,8 +549,8 @@ WCR01 bsr Delay Issue command & delay
 WCR02 ldb DPort+DP.CmdR Get status
  bitb #%00000001 Busy?
  beq DELAY4 ..no; do nothing
- lda #AtSpeed Flag motors at speed
- sta >D.DskTmr
+ ldd #AtSpeed Reset timer
+ std (V.VIRQ+VI.Ctrl),U
  bra WCR02 wait for it
 
 WCR lda #MotorOn Motors on
@@ -610,7 +624,7 @@ RESTOR lbsr SELECT Select drive
  lda #5 Repeat five times
 RESTR2 ldb #F.STPI Step in command
  pshs A
- lbsr WCR01 Issue command, delay & wait for done.
+ bsr WCR01 Issue command, delay & wait for done.
  puls A
  deca DONE Stepping?
  bne RESTR2 ...no; step again.
@@ -622,9 +636,10 @@ RESTR2 ldb #F.STPI Step in command
 *
 * Motor timer
 *
-MOTOR pshs D,X
- lda >D.DskTmr Motors at speed?
- bne MOTOR9 ..yes; skip delay
+MOTOR pshs D,X,Y
+ lda <D.DskTmr Motors at speed?
+ bmi SelDly1
+ bne SelDly2 ..yes; skip delay
  lda #MotorOn turn on disk motors
  sta DPort+DP.Ctrl
  ldx #MotorDly spin up delay
@@ -632,10 +647,39 @@ SelDly nop
  nop
  leax -1,X
  bne SelDly
-MOTOR9 lda #AtSpeed Flag motors at speed
- sta >D.DskTmr
- puls D,X,PC
+SelDly1 bsr MOTOR9
+ bcc SelDly2 skip if VIRQ ok
+ ldb #$80
+ stb <D.DskTmr
+SelDly2 ldd #AtSpeed time 4s at 60/s
+ std V.VIRQ+VI.Cnt,U reset VIRQ tick count
+ puls D,X,Y,PC
 
+MOTOR9 lda #1 Flag motors at speed
+ sta <D.DskTmr
+ ldx #1 install
+ leay V.VIRQ,U virq descriptor
+ clr VI.Stat,Y no interrupt yet
+ ldd #AtSpeed initial tick count
+ OS9 F$VIRQ
+ rts
+
+ pag
+*********************************************************
+*
+* Interrupt service
+*
+IRQSERVC pshs a
+ tst <D.DMAReq No-halt?
+ beq IRQSERVC1 no; skip VIRQ
+ bsr MOTOR9 install VIRQ
+ bra IRQSERVC9
+IRQSERVC1 clr DPort+DP.Ctrl Everything off
+ lda >V.VIRQ+VI.Stat,U
+ anda #^VI.IFlag no interrupt yet
+ sta >V.VIRQ+VI.Stat,U
+ clr <D.DskTmr
+IRQSERVC9 puls A,PC
 
  emod
 DSKEND equ *
