@@ -550,7 +550,7 @@ WCR02 ldb DPort+DP.CmdR Get status
  bitb #%00000001 Busy?
  beq DELAY4 ..no; do nothing
  ldd #AtSpeed Reset timer
- std (V.VIRQ+VI.Ctrl),U
+ std (V.VIRQ+VI.Cnt),U
  bra WCR02 wait for it
 
 WCR lda #MotorOn Motors on
