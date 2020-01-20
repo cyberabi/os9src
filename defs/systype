@@ -52,7 +52,19 @@ ProfDisk rmb 1
 
  ifeq LEVEL-1
 Cms9670 rmb 1
+ else
+ rmb 1
  endc
+
+ExDskIII rmb 1
+DMAF2 rmb 1
+DC2 rmb 1
+DC3 rmb 1
+LFD400 rmb 1
+G28 rmb 1
+G58 rmb 1
+
+FD501 rmb 1
 
 DiskType set 0
 

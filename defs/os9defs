@@ -36,7 +36,8 @@ F$GModDr rmb 1 get Module Directory copy
 F$CpyMem rmb 1 Copy External Memory
 F$SUser rmb 1 Set User ID number
 F$UnLoad rmb 1 Unlink Module by name
- ORG $28 Beginning of System Reserved Calls
+ ORG $27 Beginning of System Reserved Calls
+F$VIRQ rmb 1 Install/Delete Virtual IRQ 
 F$SRqMem rmb 1 System Memory Request
 F$SRtMem rmb 1 System Memory Return
 F$IRQ rmb 1 Enter IRQ Polling Table
@@ -75,7 +76,20 @@ F$STABX rmb 1 Store A at 0,X in task B
 F$AllPrc rmb 1 Allocate Process Descriptor
 F$DelPrc rmb 1 Deallocate Process Descriptor
 F$ELink rmb 1 Link using Module Directory Entry
-F$FModul rmb 1 Find Module Directory Entry
+F$FModul rmb 1 Find Module Directory EntryA
+
+ pag
+***********************************************************
+*
+*     VIRQ packet format
+*
+ ORG 0
+VI.Cnt rmb 2 count down counter
+VI.Rst rmb 2 reset value for counter
+VI.Stat rmb 1 status byte
+
+VI.IFlag equ %00000001 status byte virq flag
+
  pag
 ************************************************************
 *
