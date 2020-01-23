@@ -39,12 +39,15 @@
  fcb DIR.+SHARE.+PREAD.+PWRIT.+UPDAT.+EXEC.+PEXEC.
 DSKNAM fcs "CCDisk"
 
- fcb 4 Edition telltale byte
+ fcb 5 Edition telltale byte
 *******************
 * Revision History
 * edition 1: prehistoric
 * edition 2: backported from GIMIX DC3 driver            CJB
 * edition 4: backported from CoCo Level 1 02.00.00       CJB
+*  VIRQ support
+* edition 5: backported from CoCo Level 1 02.00.01       CJB
+*  Stepping rate and double-sided patches
 *******************
 
  pag
@@ -81,9 +84,9 @@ DSKENT lbra INIDSK Initialize i/o
 *
 * Fd1771 Commands
 *
-F.REST equ $03 Restore command
-F.SEEK equ $13 Seek command
-F.STPI equ $43 Step in one track command
+F.REST equ $00 Restore command
+F.SEEK equ $10 Seek command
+F.STPI equ $40 Step in one track command
 F.READ equ $80 Read sector command
 F.WRIT equ $A0 Write sector command
 F.TYP1 equ $D0 Force type 1 status
@@ -101,7 +104,7 @@ DP.TrkR rmb 1 track register
 DP.SecR rmb 1 sector register
 DP.DatR rmb 1 data register
 
-SeekDly set 8750 seek delay
+SeekDly set 2094 seek delay
 MotorDly set 40960 disk select delay
 AtSpeed set 240 disk timer value
 
@@ -421,9 +424,11 @@ PHYSC2 inc 0,S Another track
 PHYSC3 subd #18 Subtract one track worth of sectors
  bcc PHYSC2 Repeat until less than 1 track size
  addb #18 Add back for sector number
- puls A Desired track.
- cmpa #Precomp Precomp?
- bls PHYSC7
+** puls A PATCH DO NOT UNCOMMENT Desired track.
+** cmpa #Precomp PATCH DO NOT UNCOMMENT Precomp?
+ lbra PHYPAT Inline patch
+ fcb $15 Vestigial precomp value
+PHYSC4 bls PHYSC7
  pshs A Save track
  lda CURDRV,U
  ora #PrecOn Enable precomp
@@ -439,8 +444,10 @@ SETTRACK ldb V.TRAK,X Current track
  beq SETRK8 ..yes; skip seek
 SETRK6 sta V.TRAK,X 
  sta DPort+DP.DatR Put new trk in data reg
- ldb #F.SEEK Command
- bsr WCR01 Issue command
+** ldb #F.SEEK PATCH DO NOT UNCOMMENT Command
+** bsr WCR01 PATCH DO NOT UNCOMMENT Issue command
+ clrb Cheap #F.REST
+ lbsr TRKPAT Patch
  pshs X
  ldx #SeekDly Delay for seek
 SETRK7 leax -1,X
@@ -590,12 +597,15 @@ PUTSTA9 rts
 *         (U)=Global Storage
 *
 WRTTRK lbsr SELECT Select drive
- lda R$U+1,X Track number
- cmpa #Precomp
- bls WRTRK1
- ldb CURDRV,U Turn on precomp
- orb #PrecOn
- stb CURDRV,U
+** lda R$U+1,X PATCH DO NOT UNCOMMENT Track number
+** cmpa #Precomp PATCH DO NOT UNCOMMENT
+** bls WRTRK1 PATCH DO NOT UNCOMMENT
+ ldb CURDRV,U Get drive select pattern
+ lbra WRTPAT Patch
+ nop Overwrite old code
+WRTRK00 bls WRTRK0 ..no precomp? skip
+ orb #PrecOn Turn on precomp
+WRTRK0 stb CURDRV,U
 WRTRK1 ldx Curtbl,u Point to drive table
  lbsr SETTRACK Seek to track
  bcs PUTSTA9
@@ -623,13 +633,19 @@ RESTOR lbsr SELECT Select drive
  clr V.TRAK,X Old track = 0
  lda #5 Repeat five times
 RESTR2 ldb #F.STPI Step in command
- pshs A
- bsr WCR01 Issue command, delay & wait for done.
- puls A
- deca DONE Stepping?
+** pshs A PATCH DO NOT UNCOMMENT
+** bsr WCR01 PATCH DO NOT UNCOMMENT Issue command, delay & wait for done.
+** puls A PATCH DO NOT UNCOMMENT
+ nop overwrite old code
+ nop overwrite old code
+ nop overwrite old code
+ lbsr RSTPAT patch
+RESTR3 deca DONE Stepping?
  bne RESTR2 ...no; step again.
- ldb #F.REST Restore command
- bra WCR01
+** ldb #F.REST PATCH DO NOT UNCOMMENT Restore command
+** bra WCR01 PATCH DO NOT UNCOMMENT
+ clrb Cheap F.REST
+ lbra RSTPAT1 Patch
 
  pag
 *********************************************************
@@ -680,6 +696,51 @@ IRQSERVC1 clr DPort+DP.Ctrl Everything off
  sta >V.VIRQ+VI.Stat,U
  clr <D.DskTmr
 IRQSERVC9 puls A,PC
+
+ pag
+*********************************************************
+*
+* WRTTRK patch
+*
+WRTPAT lda R$Y+1,X Side
+ bita #%00000001 Side 1?
+ bne WRTPAT1 ..no; skip
+ orb #$40 Select 2nd side
+WRTPAT1 lda R$U+1,X Track number
+ cmpa #Precomp Precomp?
+ lbra WRTRK00 Back to old code
+
+ pag
+*********************************************************
+*
+* PHYSIC patch
+*
+PHYPAT lda DD.FMT,X
+ bita #%00000001 Double sided?
+ beq PHYPAT1 ..no; skip
+ lsr ,S halve the track count; odd?
+ bcc PHYPAT1 ..no; skip
+ lda CURDRV,U Update drive select pattern
+ ora #$40 Select 2nd side
+ sta CURDRV,U
+PHYPAT1 puls A Desired track.
+ cmpa #Precomp Precomp?
+ lbra PHYSC4 ..back to old code
+
+ pag
+*********************************************************
+*
+* RESTOR patch
+*
+RSTPAT1 orb PD.STP,Y Modify cmd with step rate
+ lbra WCR01 Do command
+
+TRKPAT addb #$10 Convert F.REST to F.SEEK
+RSTPAT orb PD.STP,Y Modify cmd with step rate
+ pshs A
+ lbsr WCR01 Issue command, delay & wait for done.
+ puls A
+ rts
 
  emod
 DSKEND equ *

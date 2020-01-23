@@ -84,7 +84,7 @@ SecTr0 set 16
  fcb Density
  fdb Cyls Number of cylinders
  fcb Sides
- fcb 0 Verify turned on
+ fcb 1 Verify turned on
  fdb SecTrk
  fdb SecTr0
  fcb IntrLeav Sector interleave offset
