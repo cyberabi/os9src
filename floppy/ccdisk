@@ -45,6 +45,7 @@ DSKNAM fcs "CCDisk"
 * edition 1: prehistoric
 * edition 2: backported from GIMIX DC3 driver            CJB
 * edition 4: backported from CoCo Level 1 02.00.00       CJB
+*  VIRQ support
 *******************
 
  pag
