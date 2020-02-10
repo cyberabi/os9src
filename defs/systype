@@ -6,36 +6,19 @@
 *     CPU Type Definitions
 *
  org 1
-Gimix rmb 1
-SSB rmb 1
-Kodak rmb 1
-MotGED rmb 1
-Primal rmb 1
-Helix rmb 1
-Positron rmb 1
-Profitel rmb 1
-Gimix2 rmb 1
-Color rmb 1 ;WARNING: Exorsr used to use this value $0A
+Color rmb 1
+COLOR3 rmb 1 
 
- ifeq LEVEL-1
-S09 rmb 1
-Swtc rmb 1
-Cms9609 rmb 1
-Mm19 rmb 1
-Percom rmb 1
-Elektra rmb 1
-Cms9619 rmb 1 ;WARNING: Speculative reconstruction - not sure what should really be
-Digalog rmb 1 ;WARNING: Speculative reconstruction - not sure what should really be
-Sat96 rmb 1 ;WARNING: Speculative reconstruction - not sure what should really be
-Exorsr rmb 1 ;WARNING: Was $0A before Color took that value
- endc
+CPUType set 0
 
+************************************************************
+*
+*    Clock Speed Type Definitions
+*
 OneMHz equ 1
 TwoMHz equ 2
 
-CPUType set 0
-CPUSpeed set OneMHz
-
+CPUSpeed set 0
 
 ************************************************************
 *
@@ -68,7 +51,6 @@ FD501 rmb 1
 
 DiskType set 0
 
-
 ************************************************************
 *
 *     Clock Type Definitions
@@ -79,10 +61,30 @@ VIA rmb 1 VIA timer
 M58167 rmb 1 M58167 clock
 MC146818 rmb 1 MC146818 clock
 MPT rmb 1 Swtpc MPT timer card
+GIME rmb 1 Color computer GIME chip clock
 
 ClocType set 0
 
+************************************************************
+*
+*    Power Line Frequency Definitions
+*
+Hz50 equ 1 Assemble clock for 50 hz power
+Hz60 equ 2 Assemble clock for 60 hz power
+
+PwrLnFrq set 0
+
+
+************************************************************
+* ACIA type set up
+*
+ org 1
+ACIA6850 rmb 1 MC6850 acia.
+ACIA6551 rmb 1 SY6551 acia.
+ACIA2661 rmb 1 SC2661 acia.
+
+ACIATYPE set 0
 
  opt l
- use ../../defs/sysdefs.color
+ use ../../defs/sysdefs.sys
 

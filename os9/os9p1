@@ -1,14 +1,10 @@
 
- nam OS-9 Level I CoCo 2.00.00 kernal, part 1
+ nam OS-9 Level II CoCo 2.00.00 kernal, part 1
  ttl System Type definitions
 
  use defsfile
 
- ifeq (CPUType-Gimix)*(CPUType-Exorsr)*(CPUType-Color)
  opt l
- else
- opt -l
- endc
 
  ttl Names & tables
  opt -c
@@ -16,7 +12,7 @@
 
 ************************************************************
 *                                                          *
-*           OS-9 Level I V1.2 - Kernal, part 1             *
+*           OS-9 Level II V2.0 - Kernal, part 1            *
 *                                                          *
 ************************************************************
 
@@ -31,22 +27,23 @@
 * the licensee is strictly prohibited!!
 *
 
+*
+* Portions reconstructed from Level 1 sources by C. Burke
+* Change history is missing for the associated changes
+*
+
 *****
 *
 *  Module Header
 *
 Type set SYSTM+OBJCT
 Revs set REENT+1
- ifeq CPUType-Color
+ ifeq (CPUType-Color)*(CPUType-Color3)
 ROMEnd equ * On color computer base of module = end of memory
  endc
  mod OS9End,OS9Nam,Type,Revs,COLD,0
- ifeq CPUType-Color
-OS9Nam fcs /OS9/
- else
 OS9Nam fcs /OS9p1/
- endc
- fcb 14 Edition number
+ fcb 16 Edition number
 
 *************************
 *    Edition History
@@ -76,155 +73,29 @@ OS9Nam fcs /OS9p1/
 *
 * Ed. 14 - Changes to match Color Computer V2.00.00
 *                                                      CJB  12/21/19
+*
+* Ed. 16 - Changes to match Color Computer Level II V2.00.00
+*                                                      CJB  02/09/20
 
 *********
 * Version Id
 *
- ifeq CPUType-Color
- fcc /CC/ Version name
+ ifeq CPUType-Color3
 RamLimit set $EF00
  endc
- ifeq CPUType-Exorsr
- fcc / Exor / Version name
-RamLimit set $E000
- endc
- ifeq CPUType-Mm19
- fcc / Mm19 / Version name
-RamLimit set $E800
- endc
- ifeq CPUType-Gimix
- fcc / Gmx  / Version name
-RamLimit set $E000
- endc
- ifeq CPUType-Swtc
- fcc /Swtpc / Version name
-RamLimit set $E000
- endc
- ifeq CPUType-S09
- fcc /SwtMem/ Version name
-RamLimit set $E000
- endc
- ifeq CPUType-SSB
- fcc /Smoke / Version name
-RamLimit set $E800
- endc
- ifeq CPUType-Percom
- fcc /Percom/ Version name
-RamLimit set $E800
- endc
- ifeq CPUType-Cms9609
- fcc / CMS  / Version name
-RamLimit set $E000
- endc
- ifeq CPUType-Cms9619
- fcc / CMS  / Version name
-RamLimit set $F000
- endc
- ifeq CPUType-HELIX
- fcc /Helix /
-RamLimit set $E000
- endc
- ifeq CPUType-Elektra
- fcc /Elekt / AAA chicago cpu
-RamLimit set $E000
- endc
- ifeq CPUType-Digalog
- fcc /Diglog/ Digalog cpu
-RamLimit set $E000
- endc
- ifeq CPUType-Sat96
- fcc /Sat96 / Sat-96 board
-RamLimit set $E600
- endc
-
  ifeq CPUType-Color
-CNFSTR fcs /INIT/ Configuration module name
-OS9STR fcs /OS9P2/ Kernal, part 2 name
- else
-CNFSTR fcs /Init/ Configuration module name
-OS9STR fcs /OS9p2/ Kernal, part 2 name
+RamLimit set $EF00
  endc
-
- page
- ifeq CPUType-Color
-*****
-*
-* Interrupt dispatch table
-*
-VectCode equ *
- bra SWI3Jmp
- nop
- bra SWI2Jmp
- nop
- bra SWIJmp
- nop
- bra NMIJmp
- nop
- bra IRQJmp
- nop
- bra FIRQJmp
-
-SWI3Jmp jmp [D.SWI3]
-SWI2Jmp jmp [D.SWI2]
-SWIJmp jmp [D.SWI]
-NMIJmp jmp [D.NMI]
-IRQJmp jmp [D.IRQ]
-FIRQJmp jmp [D.FIRQ]
-VectEnd equ *
- endc
-
-*****
-*
-* System Service Routine Table
-*
-SVCTBL equ *
- fcb F$LINK
- fdb LINK-*-2
- fcb F$FORK
- fdb FORK-*-2
- fcb F$Chain
- fdb USRCHN-*-2
- fcb F$Chain+$80
- fdb SYSCHN-*-2
- fcb F$PrsNam
- fdb PNAM-*-2
- fcb F$CmpNam
- fdb CNAM-*-2
- fcb F$SchBit
- fdb SBIT-*-2
- fcb F$AllBit
- fdb ABIT-*-2
- fcb F$DelBit
- fdb DBIT-*-2
- fcb F$CRC
- fdb CRCGen-*-2
- fcb F$SRqMem+$80
- fdb SRQMEM-*-2
- fcb F$SRtMem+$80
- fdb SRTMEM-*-2
- fcb F$AProc+$80
- fdb APRC-*-2
- fcb F$NProc+$80
- fdb NXTPRC-*-2
- fcb F$VModul+$80
- fdb VMOD-*-2
- fcb F$SSVC
- fdb SSVC-*-2
- fcb $80
 
  ttl COLD Start
  page
 *
-* Clear System Memory, Skipping First 32 Bytes
+* Clear System Memory, Skipping Some Low Bytes
 *
-LORAM set $20
- ifeq CPUType-Color
-HIRAM set $400
+LORAM set $100
+HIRAM set $2000
 RAMMSK set $F8 Initial bit map mask
- else
-HIRAM set $300
-RAMMSK set $F0 Initial bit map mask
- endc
+
 COLD ldx #LORAM Set ptr
  ldy #HIRAM-LORAM Set byte count
  clra CLEAR D
@@ -233,26 +104,148 @@ COLD05 std ,X++ Clear two bytes
  leay -2,Y Count down
  bne COLD05
  inca ONE Page for direct page
- ifeq CPUType-Color
- inca ANOTHER Page for direct page
- endc
- std D.FMBM Set free memory bit map
- addb #BMAPSZ Add map size
- std D.FMBM+2
- addb #2 Reserve i/o routine entry
+ std D.Tasks Pointer to tasks
+ addb #DAT.TkCt Room for tasks
+ std D.TskIPt Task image table
+**CJB
+ clrb
+ inca Second direct page
+ std D.BlkMap
+ addd #DAT.BMSz Memory block map size
+ std D.BlkMap+2
+ clrb Page boundary
+ inca Third direct page
  std D.SysDis Set system service request table
- addb #SVCTSZ+2 Add table size
+ inca Reserve 256 bytes for system table
  std D.UsrDis Set user service request table
- clrb SET Module directory address
- inca
+ inca Reserve 256 bytes for user table
+ std D.PrcDBT
+ inca Reserve 256 bytes for process table
+ std D.SysPrc
+ std D.Proc
+ adda #2 Stack page
+ tfr D,S get initial stack
+ inca Eighth direct page
+ std D.SysStk
+ std D.SysMem
+ inca Ninth direct page
  std D.ModDir Set module directory address
- stx D.ModDir+2 Set end
- leas $100,X get initial stack
+ std D.ModEnd
+ adda #6 Tenth through fifteenth direct page
+ std D.ModDir+2 Set module directory end
+ std D.ModDAT
+ std D.CCMem
+ ldd #$2000
+ std D.CCStk
+
+ leax L0271,pcr
+ tfr X,D
+ ldx #D.SWI3
+L0065 std ,X++
+ cmpx #D.SWI+2
+ bls L0065
+
+ leax L0F00,pcr
+ pshs X
+ leay L0EDE,pcr
+ ldx #D.Clock
+L0079 ldd ,Y++
+ addd ,S
+ std ,X++
+ cmpx #D.XSWI+2
+ bls L0079
+ leas 2,S
+
+ ldx D.XSWI2
+ stx D.UsrSvc
+ ldx D.XIRQ
+ stx D.UsrIRQ
+ leax L0316,pcr
+ stx D.SysSVC
+ stx D.XSWI2
+ leax L0E12,pcr
+ stx D.SysIRQ
+ stx D.XIRQ
+ leax L0E45,pcr
+ stx D.SvcIRQ
+ leax L0E49,pcr
+ stx D.Poll
+ leax L0E44,pcr
+ stx D.AltIRQ
+ leax L0E69,pcr
+ stx D.Flip0
+ leax L0E7D,pcr
+ stx D.Flip1
+
+ leay L0200,pcr
+ lbsr L037F
+ ldu D.PrcDBT
+ ldx D.SysPrc
+ stx ,U
+ stx 1,U
+ lda #1
+ sta P$ID,X
+ lda #SysState
+ sta P$State,X
+ lda #SysTask CoCo system task number
+ sta D.SysTsk
+ sta P$Task,X
+ lda #255 Highest priority and age (run first)
+ sta P$Prior,X
+ sta P$Age,X
+
+ leax P$DATImg,X
+ stx D.SysDAT
+ clra First 8K block
+ clrb
+ std ,X++ First block of DAT
+ ldy #DAT.BlCt-2
+ ldd #DAT.Free Unused DAT block
+L00EF std ,X++
+ leay -1,Y
+ bne L00EF
+ ldd #IOBlock Map I/O to final block of DAT
+ std ,X++
+
+ ldx D.Tasks
+L00FC inc ,X
+ inc 1,X
+L0100 ldx D.SysMem
+ ldb D.CCStk
+L0104 inc ,X+
+ decb
+ bne L0104
+
+ clr D.MemSz Assume 128K RAM
+ ldd #$0313 Check pages 128K apart
+ std DAT.Regs+5 Map at A000, C000
+ ldx #$A000
+ ldd #$DC78 Known different from current contents
+ std ,X
+ cmpd DAT.BlSz,X Does page 03 alias to page 13?
+ beq L0122 ..yes; only 128K RAM
+ inc D.MemSz 512K RAM
+L0122 equ *
+
+ ldy #DAT.BlSz*1 Start of page 1
+ ldx D.BlkMap
+L0128 pshs X
+ ldd ,S
+ subd D.BlkMap
+ cmpb #DAT.BMSz-1
+ bne L0136
+ ldb #1 First page to check
+ bra COLD16
+L0136 lda D.MemSz Mem 512K?
+ bne COLD10 ..yes; check all
+ cmpb #$0F Checked 128K?
+ bcc COLD15 ..yes; done
+
 *
 * Find End Of Ram
 *
-COLD10 leay 0,X Copy current ptr
- ldd 0,Y Get current value
+COLD10 stb DAT.Regs+1 Map block at $2000
+ ldu 0,Y Get current value
  ldx #$00FF Get bit pattern
  stx 0,Y Store it
  cmpx 0,Y Is it there?
@@ -260,53 +253,91 @@ COLD10 leay 0,X Copy current ptr
  ldx #$FF00 Try a different pattern
  stx 0,Y Store it
  cmpx 0,Y Did it take?
- bne COLD15 If not, eor
- std 0,Y Replace current value
- leax 256,Y Try next page
- cmpx #RamLimit
- bcs COLD10 Branch if more
- leay 0,X Copy end-of-ram ptr
-COLD15 leax 0,Y Copy eor ptr
+ bne COLD15 If not, done
+ stu 0,Y Replace current value
+ bra COLD17
+COLD15 ldb #$80
+COLD16 stb [,S] Mark end of block map (Fake 1MB)
+COLD17 puls X Get block map pointer
+ leax 1,X Next
+ cmpx D.BlkMap+2
+ bcs L0128
+ ldx D.BlkMap
+ inc ,X Another valid block
+ ldx D.BlkMap+2
+ leax -1,X
+ tfr X,D
+ subd D.BlkMap
+ leas XMINUS16,S
+ leay 0,S
+ lbsr L01F1
+ pshs X
+ ldx #X0D00
+L017F pshs Y,X
+ lbsr L0AF0
+ ldb 1,Y
+ stb DAT.Regs+0
+ lda 0,X
+ clr Dat.Regs+0
+ puls X,Y
 
- ifeq CPUType-Exorsr
-*** >>> Patch For Exorciser Environment <<< ***
-*
- leax NMI,pcr
- stx $FFFC
- leax SWIRQ,pcr
- stx $FFFA
- leax IRQ,PCR get irq vector
- stx $FFF8 set hardware vector
- leax SWI2RQ,PCR get swi2 vector
- stx $FFF4 set hardware vector
- leax SWI3RQ,PCR get swi3 vector
- stx $FFF2 set hardware vector
-EndRAM equ $A50 This must be greater than the size
-* of ctlrmod+bootmod+os9p2+*
- leax -EndRAM,PCR get artificial end-of-ram
- stx D.BtLo
- stx D.BtHi
-*
-*** >>> End Of Exorciser Patch <<< ***
- endc
+ cmpa #M$ID1 Possible module?
+ bne L01A7 ..no; skip
+ lbsr L0463 Validate module
+ bcc L019D ..no error; continue
+ cmpb #E$KwnMod
+ bne L01A7
 
- stx D.MLIM Set memory limit
+L019D ldd #2
+ lbsr L0B02
+ leax D,X
+ bra L01A9
 
- ifeq CPUType-Color
-*** >>> Patch For Color Computer Environment <<< ***
-*
- pshs y,x
- leax VectCode,pcr get vector table
- ldy #$100 get destination for vectors 
- ldb #(VectEnd-VectCode)
-CpyVec1 lda ,x+ copy from vector table
- sta ,y+ to destination
+L01A7 leax 1,X
+ cmpx #X1E00 At end of block (skipping vecs and IO)
+ bcs L017F
+ bsr L01D2
+L0180 leax L0264,pcr
+ bsr L01EB
+ bcc L01BF
+ OS9 F$Boot
+ bcc L01B0
+ bra L01CE
+
+L01BF stu D.Init
+L01C1 leax L0268,pcr
+ bsr L01EB
+ bcc L01D0
+ OS9 F$Boot
+ bcc L01C1
+L01CE jmp D.Crash
+L01D0 jmp ,Y
+
+L01D2 ldx D.SysMem
+ leax XED,X
+ lda #X80
+ sta X12,X
+ ldb #X12
+L01DF lda #1
+L01E1 sta ,X+
  decb
- bne CpyVec1
- puls x,y
-*
-*** >>> End Of Color Computer Patch <<< ***
- endc
+ bne L01E1
+ ldx D.BlkMap+2
+ sta -1,X
+ rts
+
+L01EB lda #XC0
+ OS9 F$Link
+ rts
+
+L01F1 pshs Y,X,D
+ ldb #X8
+ ldx ,S
+L01F7 stx ,Y++
+ leax 1,X
+ decb
+ bne L01F7
+ puls D,X,Y,PC
 
 *
 * Search Memory For Modules, Build Module Directory
@@ -330,7 +361,7 @@ COLD45 ldd ,Y++ get vector
  cmpx #D.NMI end of dp vectors?
  bls COLD45 branch if not
  leas 2,S return scratch
- ifeq CPUType-Color
+ ifeq (CPUType-Color)*(CPUType-Color3)
  leax SWITCH,PCR
  stx D.URtoSs
  endc
@@ -347,7 +378,7 @@ COLD45 ldd ,Y++ get vector
  leax IOPOLL,PCR Set irq polling routine
  stx D.POLL
 
- ifeq CPUType-Color
+ ifeq (CPUType-Color)*(CPUType-Color3)
  leax TICK,PCR Get clock service routine
  stx D.CLOCK CoCo 0081
  stx D.AltIRQ
@@ -385,7 +416,7 @@ COLD50 ldx D.FMBM Get bit map ptr
 
  ttl INTERRUPT Service handlers
  page
- ifeq CPUType-Color
+ ifeq (CPUType-Color)*(CPUType-Color3)
  else
 *****
 *
@@ -1656,12 +1687,8 @@ SETSVC ldb ,Y+ Get next routine offset
  cmpb #$80 End of table code?
  bne SETS10 Branch if not
  rts
+
  page
-
- ifne (CPUType-Gimix)*(CPUType-Exorsr)
- opt l
- endc
-
  ifeq CPUType-Gimix
 *
 * Dynamic Address Translator Initialization
@@ -1746,11 +1773,141 @@ DAT10 stb B,X Init dat register
  lbra COLD
  endc
 
+ page
+ ifeq (CPUType-Color)*(CPUType-Color3)
+*****
+*
+* Interrupt dispatch table
+*
+VectCode equ *
+ bra SWI3Jmp
+ nop
+ bra SWI2Jmp
+ nop
+ bra SWIJmp
+ nop
+ bra NMIJmp
+ nop
+ bra IRQJmp
+ nop
+ bra FIRQJmp
+
+SWI3Jmp jmp [D.SWI3]
+SWI2Jmp jmp [D.SWI2]
+SWIJmp jmp [D.SWI]
+NMIJmp jmp [D.NMI]
+IRQJmp jmp [D.IRQ]
+FIRQJmp jmp [D.FIRQ]
+VectEnd equ *
+ endc
+
+*****
+*
+* System Service Routine Table
+*
+SVCTBL equ *
+ fcb F$LINK
+ fdb LINK-*-2
+ fcb F$FORK
+ fdb FORK-*-2
+ fcb F$Chain
+ fdb USRCHN-*-2
+ fcb F$Chain+$80
+ fdb SYSCHN-*-2
+ fcb F$PrsNam
+ fdb PNAM-*-2
+ fcb F$CmpNam
+ fdb CNAM-*-2
+ fcb F$SchBit
+ fdb SBIT-*-2
+ fcb F$AllBit
+ fdb ABIT-*-2
+ fcb F$DelBit
+ fdb DBIT-*-2
+ fcb F$CRC
+ fdb CRCGen-*-2
+ fcb F$SRqMem+$80
+ fdb SRQMEM-*-2
+ fcb F$SRtMem+$80
+ fdb SRTMEM-*-2
+ fcb F$AProc+$80
+ fdb APRC-*-2
+ fcb F$NProc+$80
+ fdb NXTPRC-*-2
+ fcb F$VModul+$80
+ fdb VMOD-*-2
+ fcb F$SSVC
+ fdb SSVC-*-2
+ fcb $80
+
+**END CJB
+* addb #2 Reserve i/o routine entry
+* std D.SysDis Set system service request table
+* addb #SVCTSZ+2 Add table size
+* std D.UsrDis Set user service request table
+* clrb SET Module directory address
+* inca
+* std D.ModDir Set module directory address
+* stx D.ModDir+2 Set end
+* leas $100,X get initial stack
+**
+** Find End Of Ram
+**
+*COLD10 leay 0,X Copy current ptr
+* ldd 0,Y Get current value
+
+* leax 0,Y Copy eor ptr
+
+ ifeq CPUType-Exorsr
+*** >>> Patch For Exorciser Environment <<< ***
+*
+ leax NMI,pcr
+ stx $FFFC
+ leax SWIRQ,pcr
+ stx $FFFA
+ leax IRQ,PCR get irq vector
+ stx $FFF8 set hardware vector
+ leax SWI2RQ,PCR get swi2 vector
+ stx $FFF4 set hardware vector
+ leax SWI3RQ,PCR get swi3 vector
+ stx $FFF2 set hardware vector
+EndRAM equ $A50 This must be greater than the size
+* of ctlrmod+bootmod+os9p2+*
+ leax -EndRAM,PCR get artificial end-of-ram
+ stx D.BtLo
+ stx D.BtHi
+*
+*** >>> End Of Exorciser Patch <<< ***
+ endc
+
+ stx D.MLIM Set memory limit
+
+ ifeq CPUType-Color
+*** >>> Patch For Color Computer Environment <<< ***
+*
+ pshs y,x
+ leax VectCode,pcr get vector table
+ ldy #$100 get destination for vectors 
+ ldb #(VectEnd-VectCode)
+CpyVec1 lda ,x+ copy from vector table
+ sta ,y+ to destination
+ decb
+ bne CpyVec1
+ puls x,y
+*
+*** >>> End Of Color Computer Patch <<< ***
+ endc
+
+* leax 256,Y Try next page
+* cmpx #RamLimit
+* bcs COLD10 Branch if more
+* leay 0,X Copy end-of-ram ptr
+
  emod
 OS9End equ *
 
  page
- ifeq CPUType-Color
+ ifeq (CPUType-Color)*(CPUType-Color3)
 *
 * Os-9 System Entries
 *
@@ -1853,7 +2010,7 @@ SYSVEC fdb SWI3HN+$FFE2-* Swi3 handler
  endc
  endc
 
- ifne CPUType-Color
+ ifne (CPUType-Color)*(CPUType-Color3)
 ROMEnd equ *
  endc
 
