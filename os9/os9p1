@@ -38,9 +38,6 @@
 *
 Type set SYSTM+OBJCT
 Revs set REENT+1
- ifeq (CPUType-Color)*(CPUType-Color3)
-ROMEnd equ * On color computer base of module = end of memory
- endc
  mod OS9End,OS9Nam,Type,Revs,COLD,0
 OS9Nam fcs /OS9p1/
  fcb 16 Edition number
@@ -111,8 +108,8 @@ COLD05 std ,X++ Clear two bytes
  clrb
  inca Second direct page
  std D.BlkMap
- addd #DAT.BMSz Memory block map size
- std D.BlkMap+2
+ addd #DAT.BMSz Max memory block map size
+ std D.BlkMap+2 Past end of block map
  clrb Page boundary
  inca Third direct page
  std D.SysDis Set system service request table
@@ -135,50 +132,53 @@ COLD05 std ,X++ Clear two bytes
  std D.ModDir+2 Set module directory end
  std D.ModDAT
  std D.CCMem
- ldd #$2000
+ ldd #$2000 End of first 8K page
  std D.CCStk
 
- leax L0271,pcr
+ leax IRQVEC,PCR Get interrupt entry
  tfr X,D
- ldx #D.SWI3
-L0065 std ,X++
- cmpx #D.SWI+2
- bls L0065
+ ldx #D.SWI3 Get vector address
+COLD36 std ,X++ init dp vector
+ cmpx #D.NMI end of dp vectors?
+ bls COLD36 branch if not
 
- leax L0F00,pcr
- pshs X
- leay L0EDE,pcr
- ldx #D.Clock
-L0079 ldd ,Y++
- addd ,S
- std ,X++
- cmpx #D.XSWI+2
- bls L0079
- leas 2,S
+COLD40 leax ROMEnd,PCR get vector offset
+ pshs X save it
+ leay SYSVEC,PCR Get interrupt entries
+ ldx #D.Clock Get vector address
+COLD45 ldd ,Y++ get vector
+ addd 0,S add offset
+ std ,X++ init dp vector
+ cmpx #D.XNMI end of dp vectors?
+ bls COLD45 branch if not
+ leas 2,S return scratch
 
- ldx D.XSWI2
+ ldx D.XSWI2 Get user service routine
  stx D.UsrSvc
- ldx D.XIRQ
+ ldx D.XIRQ Get user interrupt routine
  stx D.UsrIRQ
- leax L0316,pcr
+ leax SYSREQ,PCR Get system service routine
  stx D.SysSVC
- stx D.XSWI2
- leax L0E12,pcr
+ stx D.XSWI2 Set service to system state
+ leax SYSIRQ,PCR Get system interrupt routine
  stx D.SysIRQ
- stx D.XIRQ
- leax L0E45,pcr
- stx D.SvcIRQ
- leax L0E49,pcr
+ stx D.XIRQ Set interrupts to system state
+ leax L0E45,PCR
+ stx D.SvcIRQ Set interrupts to system state
+ leax IOPOLL,PCR Set irq polling routine
  stx D.Poll
- leax L0E44,pcr
+ leax TICK,PCR Get clock service routine
  stx D.AltIRQ
- leax L0E69,pcr
+ leax L0E69,PCR
  stx D.Flip0
- leax L0E7D,pcr
+ leax L0E7D,PCR
  stx D.Flip1
 
- leay L0200,pcr
- lbsr L037F
+*
+* Initialize Service Routine Dispatch Table
+*
+ leay SVCTBL,PCR Get ptr to service routine table
+ lbsr SETSVC Set service table entries
  ldu D.PrcDBT
  ldx D.SysPrc
  stx ,U
@@ -229,13 +229,16 @@ L0122 equ *
 
  ldy #DAT.BlSz*1 Start of page 1
  ldx D.BlkMap
+
 L0128 pshs X
  ldd ,S
  subd D.BlkMap
- cmpb #DAT.BMSz-1
- bne L0136
+ cmpb #DAT.BMSz-1 First time?
+ bne L0136 ..no; skip
+
  ldb #1 First page to check
  bra COLD16
+
 L0136 lda D.MemSz Mem 512K?
  bne COLD10 ..yes; check all
  cmpb #$0F Checked 128K?
@@ -257,18 +260,20 @@ COLD10 stb DAT.Regs+1 Map block at $2000
  stu 0,Y Replace current value
  bra COLD17
 COLD15 ldb #$80
+
 COLD16 stb [,S] Mark end of block map (Fake 1MB)
 COLD17 puls X Get block map pointer
  leax 1,X Next
- cmpx D.BlkMap+2
- bcs L0128
+ cmpx D.BlkMap+2 End of block map?
+ bcs L0128 ..no; continue
+
  ldx D.BlkMap
  inc ,X Another valid block
- ldx D.BlkMap+2
- leax -1,X
+ ldx D.BlkMap+2 Get end of block map
+ leax >-1,X
  tfr X,D
- subd D.BlkMap
- leas XMINUS16,S
+ subd D.BlkMap Get offset into block map
+ leas -16,S Temp storage
  leay 0,S
  lbsr L01F1
  pshs X
@@ -297,7 +302,7 @@ L01A7 leax 1,X
  cmpx #X1E00 At end of block (skipping vecs and IO)
  bcs L017F
  bsr L01D2
-L0180 leax L0264,pcr
+L0180 leax InitNm,PCR
  bsr L01EB
  bcc L01BF
  OS9 F$Boot
@@ -305,7 +310,7 @@ L0180 leax L0264,pcr
  bra L01CE
 
 L01BF stu D.Init
-L01C1 leax L0268,pcr
+L01C1 leax OS9p2Nm,PCR
  bsr L01EB
  bcc L01D0
  OS9 F$Boot
@@ -314,9 +319,9 @@ L01CE jmp D.Crash
 L01D0 jmp ,Y
 
 L01D2 ldx D.SysMem
- leax XED,X
+ leax >XED,X
  lda #X80
- sta X12,X
+ sta <X12,X
  ldb #X12
 L01DF lda #1
 L01E1 sta ,X+
@@ -331,13 +336,189 @@ L01EB lda #XC0
  rts
 
 L01F1 pshs Y,X,D
- ldb #X8
- ldx ,S
+ ldb #8 Number to initialize
+ ldx ,S Offset into block map
 L01F7 stx ,Y++
  leax 1,X
  decb
  bne L01F7
  puls D,X,Y,PC
+
+**END CJB
+
+*****
+*
+* System Service Routine Table
+*
+SVCTBL equ *
+ fcb F$LINK
+ fdb LINK-*-2
+ fcb F$PrsNam
+ fdb PNAM-*-2
+ fcb F$CmpNam
+ fdb CNAM-*-2
+ fcb X91
+ fdb X5B7
+ fcb F$CRC
+ fdb CRCGen-*-2
+ fcb XA8
+ fdb X60E
+ fcb XA9
+ fdb X682
+ fcb XAC
+ fdb XAF7
+ fcb XAD
+ fdb XB6B
+ fcb XAE
+ fdb X236
+ fcb F$SSVC
+ fdb SSVC-*-2
+ fcb XB4
+ fdb X162
+ fcb XB5
+ fdb X6CD
+ fcb XB6
+ fdb X5F6
+ fcb XB8
+ fdb X8F6
+ fcb F$ALLRAM
+ fdb X737
+ fcb XBA
+ fdb X787
+ fcb XBC
+ fdb X850
+ fcb XBD
+ fdb X806
+ fcb XBE
+ fdb X7E9
+ fcb XBF
+ fdb XA17
+ fcb XC0
+ fdb XA24
+ fcb XC1
+ fdb XA32
+ fcb XC2
+ fdb XA59
+ fcb XC3
+ fdb XA76
+ fcb XC4
+ fdb X858
+ fcb XC6
+ fdb X86C
+ fcb XC8
+ fdb X8A2
+ fcb XC9
+ fdb X8BB
+ fcb XCA
+ fdb X8C2
+ fcb XCD
+ fdb X12E
+ fcb XCE
+ fdb X419
+ fcb XD3
+ fdb X739
+ fcb $80
+
+InitNm fcs 'Init'
+OS9p2Nm fcs 'OS9p2' L0268
+BootNm fcs 'Boot' L026D
+
+IRQVEC jmp [X0240,X]
+
+
+**CJB 
+* fcb F$FORK
+* fdb FORK-*-2
+* fcb F$Chain
+* fdb USRCHN-*-2
+* fcb F$Chain+$80
+* fdb SYSCHN-*-2
+* fcb F$SchBit
+* fdb SBIT-*-2
+* fcb F$AllBit
+* fdb ABIT-*-2
+* fcb F$DelBit
+* fdb DBIT-*-2
+* fcb F$SRqMem+$80
+* fdb SRQMEM-*-2
+* fcb F$SRtMem+$80
+* fdb SRTMEM-*-2
+* fcb F$AProc+$80
+* fdb APRC-*-2
+* fcb F$NProc+$80
+* fdb NXTPRC-*-2
+* fcb F$VModul+$80
+* fdb VMOD-*-2
+**END CJB
+
+ ttl INTERRUPT Service handlers
+*****
+*
+*  Swi3 Handler
+*
+SWI3HN ldx >D.PROC Get process descriptor ptr
+ ldu #P$SWI3,X Use swi3 vector
+ beq SWITCH
+DOVEC lbra L0E5E
+
+*****
+*
+*  Swi2 Handler
+*
+SWI2HN ldx >D.PROC Get process descriptor ptr
+ ldu #P$SWI2,X Use swi3 vector
+ beq SWITCH
+ bra DOVEC
+
+*****
+*
+*  Swi Handler
+*
+SWIHN ldx >D.PROC Get process descriptor ptr
+ ldu #P$SWI,X Use swi3 vector
+ bne DOVEC
+
+*****
+*
+*  Switch to system state
+*
+*  X = Current process
+*
+SWITCH ldd D.SysSVC Get system request routine
+ std D.XSWI2
+ ldd D.SysIRQ Get system irq routine
+ std D.XIRQ
+ lda P$State,X Set system state
+ ora #SysState
+ sta P$State,X
+ sts P$SP,X Copy user stack ptr
+ leas P$Stack-R$Size,X Leave room for return regs
+ andcc #$FF-IRQMask-FIRQMask Clear interrupt masks
+ leau 0,S Get reg stack pointer
+ bsr Z02CB
+ ldb P$Task,X
+ ldx R$PC,U Get return address
+ lbsr Z0C40
+ leax 1,X
+ stx R$PC,U
+ ldy D.UsrDis
+ lbsr Z033B
+ ldb R$CC,U Get caller's CC
+ andb #$FF-IRQMask-FIRQMask Clear interrupt masks
+ stb R$CC,U
+ ldx D.Proc Get process pointer
+ bsr Z02DA
+ lda P$State,X Clear system state
+ anda #$FF-SysState
+ lbra Z0D7C
+
+* jmp 0,Y Go to post-switch routine
+*USRI10 jsr [D.POLL] Call irq polling routine
+* bcc USRI20 branch if interrupt identified
+* ldb R$CC,S get condition codes
+* orb #IRQMask set interrupt mask
+* stb R$CC,S update condition codes
+*USRI20 lbra USRRET
 
 *
 * Search Memory For Modules, Build Module Directory
@@ -351,18 +532,20 @@ COLD30 cmpb #E$KwnMod Is it known module
  beq COLD40 Branch on first duplicate
  leax 1,X Try next location
 COLD35 bne COLD20
-COLD40 leay SYSVEC,PCR Get interrupt entries
+
+ZCOLD40 leay SYSVEC,PCR Get interrupt entries
  leax ROMEnd,PCR get vector offset
  pshs X save it
  ldx #D.SWI3 Get vector address
-COLD45 ldd ,Y++ get vector
+ZCOLD45 ldd ,Y++ get vector
  addd 0,S add offset
  std ,X++ init dp vector
  cmpx #D.NMI end of dp vectors?
- bls COLD45 branch if not
+ bls ZCOLD45 branch if not
  leas 2,S return scratch
+
  ifeq (CPUType-Color)*(CPUType-Color3)
- leax SWITCH,PCR
+ leax XSWITCH,PCR
  stx D.URtoSs
  endc
  leax USRIRQ,PCR Get user interrupt routine
@@ -528,7 +711,7 @@ NMIHN equ FIRQHN
 * Handles Irq While In User State
 *
 USRIRQ leay <USRI10,PCR Get post-switch routine
-SWITCH clra SET Direct page
+XSWITCH clra SET Direct page
  tfr A,DP
  ldx D.PROC Get process
  ldd D.SysSVC Get system request routine
@@ -619,7 +802,7 @@ SLICE dec D.Slice Count tick
  bpl SLIC20 Branch if user state
 SLIC10 rti
 SLIC20 leay USRRET,PCR Set transfer ptr
- bra SWITCH Switch to system state
+ bra XSWITCH Switch to system state
  page
 *****
 *
@@ -1801,45 +1984,6 @@ FIRQJmp jmp [D.FIRQ]
 VectEnd equ *
  endc
 
-*****
-*
-* System Service Routine Table
-*
-SVCTBL equ *
- fcb F$LINK
- fdb LINK-*-2
- fcb F$FORK
- fdb FORK-*-2
- fcb F$Chain
- fdb USRCHN-*-2
- fcb F$Chain+$80
- fdb SYSCHN-*-2
- fcb F$PrsNam
- fdb PNAM-*-2
- fcb F$CmpNam
- fdb CNAM-*-2
- fcb F$SchBit
- fdb SBIT-*-2
- fcb F$AllBit
- fdb ABIT-*-2
- fcb F$DelBit
- fdb DBIT-*-2
- fcb F$CRC
- fdb CRCGen-*-2
- fcb F$SRqMem+$80
- fdb SRQMEM-*-2
- fcb F$SRtMem+$80
- fdb SRTMEM-*-2
- fcb F$AProc+$80
- fdb APRC-*-2
- fcb F$NProc+$80
- fdb NXTPRC-*-2
- fcb F$VModul+$80
- fdb VMOD-*-2
- fcb F$SSVC
- fdb SSVC-*-2
- fcb $80
-
 **END CJB
 * addb #2 Reserve i/o routine entry
 * std D.SysDis Set system service request table
@@ -1861,9 +2005,9 @@ SVCTBL equ *
  ifeq CPUType-Exorsr
 *** >>> Patch For Exorciser Environment <<< ***
 *
- leax NMI,pcr
+ leax NMI,PCR
  stx $FFFC
- leax SWIRQ,pcr
+ leax SWIRQ,PCR
  stx $FFFA
  leax IRQ,PCR get irq vector
  stx $FFF8 set hardware vector
@@ -1886,7 +2030,7 @@ EndRAM equ $A50 This must be greater than the size
 *** >>> Patch For Color Computer Environment <<< ***
 *
  pshs y,x
- leax VectCode,pcr get vector table
+ leax VectCode,PCR get vector table
  ldy #$100 get destination for vectors 
  ldb #(VectEnd-VectCode)
 CpyVec1 lda ,x+ copy from vector table
@@ -1911,8 +2055,8 @@ OS9End equ *
 *
 * Os-9 System Entries
 *
- fdb TICK Clock tick handler
-SYSVEC fdb SWI3HN Swi3 handler
+SYSVEC fdb TICK Clock tick handler
+ fdb SWI3HN Swi3 handler
  fdb SWI2HN Swi2 handler
  fdb FIRQHN Fast irq handler
  fdb IRQHN Irq handler
@@ -2010,8 +2154,6 @@ SYSVEC fdb SWI3HN+$FFE2-* Swi3 handler
  endc
  endc
 
- ifne (CPUType-Color)*(CPUType-Color3)
 ROMEnd equ *
- endc
 
  end
