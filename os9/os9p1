@@ -93,7 +93,7 @@ RamLimit set $EF00
 * Clear System Memory, Skipping Some Low Bytes
 *
 LORAM set $100
-HIRAM set $2000
+HIRAM set DAT.BlSz Use one DAT block for system
 RAMMSK set $F8 Initial bit map mask
 
 COLD ldx #LORAM Set ptr
@@ -135,7 +135,7 @@ COLD05 std ,X++ Clear two bytes
  std D.ModDir+2 Set module directory end
  std D.ModDAT
  std D.CCMem
- ldd #$2000
+ ldd #HIRAM
  std D.CCStk
 
  leax L0271,pcr
@@ -177,8 +177,12 @@ L0079 ldd ,Y++
  leax L0E7D,pcr
  stx D.Flip1
 
- leay L0200,pcr
- lbsr L037F
+*
+* Initialize Service Routine Dispatch Table
+*
+ leay SVCTBL,PCR Get ptr to service routine table
+ lbsr SETSVC Set service table entries
+
  ldu D.PrcDBT
  ldx D.SysPrc
  stx ,U
@@ -268,7 +272,7 @@ COLD17 puls X Get block map pointer
  leax -1,X
  tfr X,D
  subd D.BlkMap
- leas XMINUS16,S
+ leas -DAT.ImSz,S
  leay 0,S
  lbsr L01F1
  pshs X
@@ -326,18 +330,84 @@ L01E1 sta ,X+
  sta -1,X
  rts
 
-L01EB lda #XC0
- OS9 F$Link
+L01EB lda #SYSTM Get system type module
+ OS9 F$LINK Link to found module
  rts
 
+*
+* Copy DAT Image D to Y
+*
 L01F1 pshs Y,X,D
- ldb #X8
+ ldb #(DAT.ImSz/2)
  ldx ,S
 L01F7 stx ,Y++
  leax 1,X
  decb
  bne L01F7
  puls D,X,Y,PC
+
+*****
+*
+* System Service Routine Table
+*
+SVCTBL equ *
+ fcb F$LINK
+ fdb LINK-*-2
+ fcb F$PrsNam
+ fdb PNAM-*-2
+ fcb F$CmpNam
+ fdb CNAM-*-2
+ fcb F$91
+ fdb SVC91-*-2
+ fcb F$CRC
+ fdb CRCGen-*-2
+ fcb F$A8
+ fdb SVCA8-*-2
+ fcb F$A9
+ fdb SVCA9-*-2
+ fcb F$AC
+ fdb SVCAC-*-2
+ fcb F$AD
+ fdb SVCAD-*-2
+ fcb F$AE
+ fdb SVCAE-*-2
+ fcb F$SSVC
+ fdb SSVC-*-2
+ fcb F$B4
+ fdb SVCB4-*-2
+ fcb F$B5
+ fdb SVCB5-*-2
+ fcb F$B6
+ fdb SVCB6-*-2
+ fcb FB8$
+ fdb SVCB8-*-2
+ fcb F$AllRam
+ fdb ARAM-*-2
+* CB: Many missing here,
+* but none of these
+* fcb F$FORK
+* fdb FORK-*-2
+* fcb F$Chain
+* fdb USRCHN-*-2
+* fcb F$Chain+$80
+* fdb SYSCHN-*-2
+* fcb F$SchBit
+* fdb SBIT-*-2
+* fcb F$AllBit
+* fdb ABIT-*-2
+* fcb F$DelBit
+* fdb DBIT-*-2
+* fcb F$SRqMem+$80
+* fdb SRQMEM-*-2
+* fcb F$SRtMem+$80
+* fdb SRTMEM-*-2
+* fcb F$AProc+$80
+* fdb APRC-*-2
+* fcb F$NProc+$80
+* fdb NXTPRC-*-2
+* fcb F$VModul+$80
+* fdb VMOD-*-2
+ fcb $80
 
 *
 * Search Memory For Modules, Build Module Directory
@@ -1675,17 +1745,19 @@ SETS10 tfr B,A copy routine offset
  ldb #E$ISWI return error
  rts
 
-SETS30 aslb MAKE Table offset
- ldu D.SysDis Get system service table
- leau B,U Get entry ptr
+SETS30 clra
+ aslb MAKE Table offset
+ tfr D,U
  ldd ,Y++ Get table relative offset
  leax D,Y Get routine address
- stx 0,U Put in system routine table
+ ldd D.SysDis Get system service table
+ stx D,U Put in system routine table
  bcs SETSVC Branch if system only
- stx SVCTSZ+2,U Put in user routine table
+ ldd D.UsrDis Get user service table
+ stx D,U Put in user routine table
 SETSVC ldb ,Y+ Get next routine offset
  cmpb #$80 End of table code?
- bne SETS10 Branch if not
+ bne SETS30 Branch if not
  rts
 
  page
@@ -1800,45 +1872,6 @@ IRQJmp jmp [D.IRQ]
 FIRQJmp jmp [D.FIRQ]
 VectEnd equ *
  endc
-
-*****
-*
-* System Service Routine Table
-*
-SVCTBL equ *
- fcb F$LINK
- fdb LINK-*-2
- fcb F$FORK
- fdb FORK-*-2
- fcb F$Chain
- fdb USRCHN-*-2
- fcb F$Chain+$80
- fdb SYSCHN-*-2
- fcb F$PrsNam
- fdb PNAM-*-2
- fcb F$CmpNam
- fdb CNAM-*-2
- fcb F$SchBit
- fdb SBIT-*-2
- fcb F$AllBit
- fdb ABIT-*-2
- fcb F$DelBit
- fdb DBIT-*-2
- fcb F$CRC
- fdb CRCGen-*-2
- fcb F$SRqMem+$80
- fdb SRQMEM-*-2
- fcb F$SRtMem+$80
- fdb SRTMEM-*-2
- fcb F$AProc+$80
- fdb APRC-*-2
- fcb F$NProc+$80
- fdb NXTPRC-*-2
- fcb F$VModul+$80
- fdb VMOD-*-2
- fcb F$SSVC
- fdb SSVC-*-2
- fcb $80
 
 **END CJB
 * addb #2 Reserve i/o routine entry
