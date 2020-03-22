@@ -174,5 +174,15 @@ Suspend equ %00001000
 Condem equ %00000010
 Dead equ %00000001
 
+ page
+*
+*   Module Directory Definitions
+*
+ org 0
+MD$MPDAT rmb 2 Module DAT img ptr
+MD$MBSiz rmb 2 Memory block size
+MD$MPtr rmb 2 Module ptr
+MD$Link rmb 2 Module link count
+MD$ESize equ . Module directory entry size
 
  opt l

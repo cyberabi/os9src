@@ -112,5 +112,13 @@ ImgChg equ %00010000
 Condem equ %00000010
 Dead equ %00000001
 
+ page
+*
+*   Module Directory Definitions
+*
+ org 0
+MD$MPtr rmb 2 Module ptr
+MD$Link rmb 2 Module link count
+MD$ESize equ . Module directory entry size
 
  opt l
