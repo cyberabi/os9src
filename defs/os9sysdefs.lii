@@ -113,6 +113,18 @@ D.IRQ rmb 2
 D.SWI rmb 2
 D.NMI rmb 2
 
+ ttl Memory Information
+ page
+************************************************************
+*
+*     D.BlkMap Field Values
+*
+NotInUse equ %00000000
+NotRAM equ %10000000
+VidRAM equ %00000100
+ModBlock equ %00000010
+RAMInUse equ %00000001
+
 ** TABLE SIZES
 *
 *BMAPSZ equ 32 BIT MAP SIZE
