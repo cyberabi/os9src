@@ -366,9 +366,9 @@ SVCTBL equ *
  fcb F$CRC
  fdb CRCGen-*-2
  fcb SysState+F$SRqMem
- fdb M0820-*-2 SRQMEM
+ fdb SRQMEM-*-2
  fcb SysState+F$SRtMem
- fdb M0897-*-2 SRTMEM
+ fdb SRTMEM-*-2
  fcb SysState+F$AProc
  fdb M0D0F-*-2 APRC
  fcb SysState+F$NProc
@@ -384,21 +384,21 @@ SVCTBL equ *
  fcb SysState+F$BtMem
  fdb M0820-*-2
  fcb SysState+F$Move
- fdb MOVE-*-2
+ fdb MV-*-2
  fcb F$AllRam
  fdb ARAM-*-2
  fcb SysState+F$AllImg
- fdb M09BA-*-2
+ fdb AIMG-*-2
  fcb SysState+F$SetImg
- fdb M0A86-*-2
+ fdb SIMG-*-2
  fcb SysState+F$FreeLB
- fdb M0A3F-*-2
+ fdb FRLB-*-2
  fcb SysState+F$FreeHB
- fdb M0A25-*-2
+ fdb FRHB-*-2
  fcb SysState+F$AllTsk
- fdb M0C56-*-2
+ fdb ALLTK-*-2
  fcb SysState+F$DelTsk
- fdb M0C66-*-2
+ fdb DELTK-*-2
  fcb SysState+F$SetTsk
  fdb M0C77-*-2
  fcb SysState+F$ResTsk
@@ -410,17 +410,17 @@ SVCTBL equ *
  fcb SysState+F$LDAXY
  fdb ELDAXY-*-2
  fcb SysState+F$LDDDXY
- fdb M0AF6-*-2
+ fdb ELDDDXY-*-2
  fcb SysState+F$LDABX
- fdb M0B12-*-2
+ fdb SLDABX-*-2
  fcb SysState+F$STABX
- fdb M0B1C-*-2
+ fdb SSTABX-*-2
  fcb SysState+F$ELink
  fdb ELINK-*-2
  fcb SysState+F$FModul
  fdb FMOD-*-2
  fcb SysState+F$AlHRAM
- fdb M099C-*-2
+ fdb AHRAM-*-2
 * but none of these
 * fcb F$FORK
 * fdb FORK-*-2
@@ -607,6 +607,8 @@ DISP30 ldb R$CC,U Get condition codes
 *
 * Set Entries In Service Routine Dispatch Tables
 *
+
+* F$SSVC Service call entry
 SSVC ldy R$Y,U Get table address
  bra SETSVC
 
@@ -799,6 +801,8 @@ NOTMAPD puls Y,U
 *
 * Validate Module
 *
+
+* F$VModul Service call entry
 * X = module block offset, D = DAT image ptr
 VMOD pshs U Save register ptr
  ldx R$X,U Get new module ptr
@@ -972,9 +976,7 @@ M0577 ldu ,Y++
 M0583 orcc #CARRY
  rts
 
- page
 * IDCHK
-* Was Z0586
 IDCHK pshs Y,X
  clra
  clrb Get 1st two bytes
@@ -1002,7 +1004,6 @@ PARI10 sta ,S
  ldb #E$BMHP ERR: bad module header parity
  bra CRCERR
 
-* Was Z05B5
 CRCCHK puls X,Y
  ldd #M$Size Get module size
  lbsr LDDDXY
@@ -1039,8 +1040,8 @@ CRCC30 puls X,Y,PC
 *  Subroutine Crccal
 *
 * Calculate Next Crc Value
-* Was Z05F7
 *
+
 CRCCAL eora 0,U Add crc msb
  pshs A save it
  ldd 1,U Get crc mid & low
@@ -1087,8 +1088,9 @@ CRCC99 rts
 *  Subroutine Crcgen
 *
 * Generate Crc
-* Was Z0636
 *
+
+* F$CRC Service call entry
 CRCGen ldd R$Y,U get byte count
  beq CRCGen20 branch if none
  ldx R$X,U get data ptr
@@ -1101,7 +1103,7 @@ CRCGen ldd R$Y,U get byte count
  ldy #3
  leau ,S Get tmp crc ptr
  pshs Y,X,D
- lbsr DOMOVE Copy initial crc from caller
+ lbsr MOVE Copy initial crc from caller
  ldx <D.Proc
  leay P$DATImg,X
  ldx 11,S
@@ -1115,7 +1117,7 @@ CRCGen10 lbsr LDAYXP get next data byte
  puls D,X,Y
  exg A,B
  exg X,U
- lbsr DOMOVE Copy final crc to caller
+ lbsr MOVE Copy final crc to caller
  leas 7,S
 CRCGen20 clrb clear carry
  rts
@@ -1137,8 +1139,7 @@ CRCGen20 clrb clear carry
 * Local: None
 * Global: D.ModDir
 
-* F$FModul service entry
-* Was Z0679
+* F$FModul Service call entry
 FMOD pshs U
  lda R$A,U Get module type
  ldx R$X,U Get name string ptr
@@ -1248,8 +1249,7 @@ SKIP10 lbsr ADR2DAT
 * Unaffects: U
 *
 
-* F$PrsNam service entry
-* Was Z072E
+* F$PrsNam Service call entry
 PNAM ldx D.Proc Get process ptr
  leay P$DATImg,X Get process DAT
  ldx R$X,U Get string ptr
@@ -1345,8 +1345,7 @@ RETCS coma Set carry
 * Returns:  Cc=Set If Names Not Equal
 *
 
-* F$CmpNam service call entry
-* Was Z07B8
+* F$CmpNam Service call entry
 CNAM ldx D.Proc Get process ptr
  leay P$DATImg,X Get process DAT
  ldx R$X,U Get pathname ptr
@@ -1413,8 +1412,9 @@ CHKN20 decb LAST Char of pathname?
 *  Subroutine Srqmem
 *
 * System Memory Request
-* Was Z0820
 *
+
+* F$SRqMem Service call entry
 SRQMEM ldd R$D,U Get byte count
  addd #$FF Round up to page
  clrb
@@ -1494,7 +1494,7 @@ SRQM25 lda ,-Y Check page
  endc
  endc
  ldx D.SysPrc
- lbsr M09BE
+ lbsr AIMG10 Allocate memory in image
  bcs SRQMXX
  ldb R$A,U
 ALOCAT inc ,Y+ Mark block as used (RAMInUse)
@@ -1512,8 +1512,9 @@ SRQMXX leas 2,S
 *  Subroutine Srtmem
 *
 * System Memory Return
-* Was Z0897
 *
+
+* F$SRtMem Service call entry
 SRTMEM ldd R$D,U Get byte count
  beq SRTMXX Branch if returning nothing
  addd #$FF Round up to page
@@ -1571,6 +1572,14 @@ NEXTSRT leax 2,X Next DAT entry
  bne SRTM20 Branch if not enough
 SRTMXX clrb CLEAR Carry
  rts
+
+ page
+*****
+*
+*  Subroutine Boot
+*
+* Reboot the system
+*
 
 * F$Boot service call entry
 BOOT comb set carry
@@ -1636,41 +1645,262 @@ BOOT30 cmpx 2,S End of boot?
  lbra L01DF Mark pages used and return
 BOOTXX rts
 
-* F$AllRam goes here
-* Was Z0967
-ARAM equ *
+ page
+*****
+*
+*  Subroutine AllRAM
+*
+* Allocate system memory
+*
 
-* F$AlHRam goes here
-* Was Z099C
-AHRAM equ *
+* F$AllRam service call entry
+ARAM ldb R$B,U Get block count
+ bsr ALLRAM
+ bcs ARAMX
+ std R$D,U Return 1st page of allocation
+ARAMX rts
 
-* F$AllImg goes here
-* Was Z09BA
-AIMG equ *
+* Was Z0970
+ALLRAM pshs Y,X,D
+ ldx D.BlkMap Get block map ptr
+ALRAM10 leay ,X Ptr to start of allocation
+ ldb 1,S Get page count
+ALRAM20 cmpx D.BlkMap+2 End of map?
+ bcc NORAM
+ lda ,X+ In use?
+ bne ALRAM10 yes; try next
+ decb Count page down
+ bne ALRAM20 Branch if not enough
+ALRAM30 tfr Y,D Get ptr to allocation
+ subd D.BlkMap Get starting offset
+ sta ,S Zero
+ lda 1,S Get page count
+ stb 1,S Return starting page
+ALRAM40 inc ,Y+ Mark used
+ deca Count page down
+ bne ALRAM40 Branch if not enough
+ clrb
+ puls D,Y,X,PC
+NORAM comb SET Carry
+ ldb #E$NoRAM
+ stb 1,S Return error
+ puls D,X,Y,PC
 
-* F$FreeHB goes here
-* Was Z0A25
-FREEHB equ *
+ page
+*****
+*
+*  Subroutine AllHRAM
+*
+* Allocate system memory from high physical memory
+*
 
-* F$FreeLB goes here
-* Was Z0A3F
-FREELB equ *
+* F$AlHRam Service call entry
+AHRAM ldb R$B,U Get block count
+ bsr ALLHRAM
+ bcs AHRAMX
+ std R$D,U Return 1st page of allocation
+AHRAMX rts
 
-* F$SetImg goes here
-* Was Z0A86
-SETIMG equ *
+* Was Z09A5
+ALLHRAM pshs Y,X,D
+ ldx D.BlkMap+2 Get block map end ptr
+AHRAM10 ldb 1,S Get page count
+AHRAM20 cmpx D.BlkMap Start of map?
+ bls NORAM
+ lda ,-X In use?
+ bne AHRAM10 yes; try next
+ decb Count page down
+ bne AHRAM20 Branch if not enough
+ tfr X,Y Get ptr to allocation
+ bra ALRAM30 Mark as used and return
+
+ page
+*****
+*
+*  Subroutine AllImg
+*
+* Allocate RAM blocks in process DAT image
+*
+
+* F$AllImg Service call entry
+AIMG ldd R$D,U Get start block and block count
+ ldx R$X,U Get proc ptr
+AIMG10 pshs U,Y,X,D
+ asla Get requested DAT offset
+ leay P$DATImg,X Get process DAT image
+ leay A,Y Start at requested offset
+ clra
+ tfr D,X Block count
+ ldu D.BlkMap Get block map ptr
+ pshs U,Y,X,D
+AIMG20 ldd ,Y++ Load from DAT
+ cmpd #DAT.Free Unused?
+ beq AIMG30 yes; allocate it
+* Block in use; is it allocated?
+ lda D,U Get corresponding block map byte
+ cmpa #RAMInUse Allocated?
+ puls D Get requested count
+ bne AIMG60 branch if not allocated
+ subd #1 Count down unallocated
+ pshs D
+AIMG30 leax -1,X Count down blocks
+ bne AIMG20 branch if not enough
+ ldx ,S++ Allocated all?
+ beq AIMG70 yes; continue
+AIMG40 lda ,U+ Try next spot in block map
+ bne AIMG50 Branch if allocated
+ leax -1,X Count down unallocated
+ beq AIMG70 Branch if allocate all
+AIMG50 cmpu D.BLkMap+2 At end of map?
+ bcs AIMG40 no; check next
+AIMG60 ldb #E$MemFul
+ leas 6,S Clean stack
+ stb 1,S Return error
+ comb SET Carry
+ puls D,X,Y,U,PC
+AIMG70 puls X,Y,U
+AIMG75 ldd ,Y++ Load from DAT
+ cmpd #DAT.Free Unused?
+ bne AIMG90 no; skip
+AIMG80 lda ,U+ Find next free block in map
+ bne AIMG80 no; skip
+ inc ,-U Mark it is used
+ tfr U,D
+ subd D.BlkMap
+ std -2,Y Update DAT w/ block map index
+AIMG90 leax -1,X Count down blocks
+ bne AIMG75 Branch if not enough
+ ldx 2,S Get proc ptr
+ lda P$State,X
+ ora #ImgChg Mark image changed
+ sta P$State,X
+ clrb RESET Carry
+ puls D,X,Y,U,PC
+
+ page
+*****
+*
+*  Subroutine FreeHB
+*
+* Find highest contiguous free blocks in DAT
+*
+
+* F$FreeHB Service call entry
+FRHB ldb R$B,U Get block count
+ ldy R$X,U Get DAT image
+ bsr FREEHB
+ bcs FRHBX
+ sta R$A,U Return starting position
+FRHBX rts
+
+* Was Z0A31
+FREEHB tfr B,A Duplicate count
+FREEHB10 suba #(DAT.ImgSiz+1) Start this far from end
+ nega
+ pshs X,D
+ ldd #-1 Step -1, end -1
+ pshs D
+ bra FRB10
+
+*****
+*
+*  Subroutine FreeLB
+*
+* Find lowest contiguous free blocks in DAT
+*
+
+* F$FreeLB Service call entry
+FRLB ldb R$B,U Get block count
+ ldy R$X,U Get DAT image
+ bsr FREELB
+ bcs FRLBX
+ sta R$A,U Return starting position
+FRLBX rts
+
+* Was Z0A4B
+FREELB lda #-1 Start at beginning
+ pshs X,D
+ lda #1 Step by 1
+ subb #(DAT.ImgSiz+1) End this far from end
+ negb
+ pshs D 
+ bra FRB10
+
+* Common code
+* 0,S=step value
+* 1,S=edge of range - step
+* 2,S=start of range - step
+FRB10 clra
+ ldb 2,S Get DAT position
+ addb ,S Add step value
+ stb 2,S
+ cmpb 1,S At end?
+ bne FRB40 no; check position
+
+ ldb #E$MemFul No memory
+ cmpy D.SysDAT System mode?
+ bne FRB20 no; use this error
+ ldb #E$NoRAM No system memory
+FRB20 stb 3,S Return error
+ comb
+ bra FRBX
+
+FRB30 tfr A,B Recover DAT position
+ addb 2,S Add step value
+FRB40 aslb Convert to offset
+ ldx B,Y Get DAT value
+ cmpx #DAT.Free Unused?
+ bne FR10 no; keep looking
+ inca Count block found
+ cmpa 3,S Found enough?
+ bne FRB30 no; keep checking
+
+FRBX leas 2,S Clean stack
+ puls D,X,PC Return starting index in A
+
+ page
+*****
+*
+*  Subroutine SetImg
+*
+* Copy from DAT image to process descriptor
+*
+
+* F$SetImg Service call entry
+SIMG ldd R$D,U Get start and count
+ ldx R$X,U Get source DAT
+ ldu R$U,U Get process descriptor
+
+* Was Z0A8C
+SETIMG pshs U,Y,X,D
+ leay P$DATImg,U Point to DAT
+ asla Get DAT offset
+ leay A,Y Get DAT ptr
+SETIMG10 ldx ,U++ Copy
+ stx ,Y++
+ decb Count the block
+ bne SETIMG10 Branch if not enough
+ ldx 2,X Get source DAT
+ lda P$State,X
+ ora #ImgChg Mark image changed
+ sta P$State,X
+ clrb CLEAR Carry
+ puls D,X,Y,U,PC
+
 
  page
 *****
 *
 *  Subroutine DATLog
 *
+* Convert DAT block offset to logical address
+*
 * Passed: B=DAT image offset
 *         X=block offset
 * Returns: X=logical address
 *
 
-* F$DATLog service call entry
+* F$DATLog Service call entry
 DTLG ldb R$B,U Get image offset
  ldx R$X,U Get block offset
  bsr DATLog
@@ -1699,6 +1929,8 @@ DATLog pshs X,D
 *****
 *
 *  Subroutine LDAXY
+*
+* Load A from offset X in DAT image Y
 *
 * Passed: X=block offset
 *         Y=DAT image pointer
@@ -1733,7 +1965,8 @@ LDAYXP lda 1,Y
  sta DAT.Regs+0 Map at first block
  lda ,X+
  clr DAT.Regs+0 Restore first block
- puls CC,PC
+ puls CC
+ bra ADR2DAT Modulo block size
 
 * Adjust DAT ptr in Y to point at entry for address in X
 * Was Z0AEA, Z0AF0
@@ -1748,13 +1981,15 @@ ADR2DAT cmpx #DAT.BlSz On current block?
 *
 *  Subroutine LDDDXY
 *
+* Load D from offset D,X in DAT image Y
+*
 * Passed: D=additional offset
 *         X=block offset
 *         Y=DAT image pointer
 * Returns: D=word at offset D,X in the mapped DAT
 *
 
-* F$DATLog service call entry
+* F$LDDDXY service call entry
 ELDDDXY ldd R$D,U Get additional offset
  leau R$X,U
  pulu X,Y Get block offset and DAT image
@@ -1775,20 +2010,45 @@ LDDDXY pshs Y,X
  puls A,X,Y,PC
 
  page
- ifeq (CPUType-Color3)
+*****
 *
-* Dynamic Address Translator Utilities
+*  Subroutine LDABX
+*
+* Loads Register A from 0,X in Task B
 *
 
+* F$LDABX Service call entry
+SLDABX ldb R$B,U Get task
+ ldx R$X,U Get src ptr
+ lbsr LDABX Get byte
+ sta R$A,U
+ rts
+
+*****
+*
+*  Subroutine STABX
+*
+* Stores Register A at 0,X in Task B
+*
+
+* F$STABX Service call entry
+SSTABX ldd R$D,U Get byte and task
+ ldx R$X,U Get dest ptr
+ lbra STABX
+
+*****
+*
+*  Subroutine Move
+*
 * Move data bytes from one address space to another
 *
 * Passed:  (A:X)=Source task and pointer
 *          (B:U)=Destination task and pointer
 *          (Y)=Length of data
 * Returns:  Cc=Set If Error
-* Was Z0B23
 
-MOVE ldd R$D,U Get tasks
+* F$Move Service call entry
+MV ldd R$D,U Get tasks
  ldx R$X,U Get source ptr
  ldy R$Y,U Get count
  ldu R$U,U Get dest ptr
@@ -1796,7 +2056,7 @@ MOVE ldd R$D,U Get tasks
 * Move data between processes
 * Y bytes from A:X to B:U
 * Was Z0B2C
-DOMOVE pshs U,Y,X,D
+MOVE pshs U,Y,X,D
  leay ,Y Zero bytes?
  lbeq Z0BF2 yes; done
  pshs Y,D
@@ -1842,7 +2102,7 @@ MOVE20 std 15,S Save byte count
  rorb
  tfr D,Y
  puls D Get DAT values
- std DAT$Regs+(TMPRAM/DAT.BlSz) Map in at $A000 and $C000
+ std DAT.Regs+(TMPRAM/DAT.BlSz) Map in at $A000 and $C000
  bcc MVPAIRS
 
  lda ,X+ Copy first byte
@@ -1857,33 +2117,33 @@ MVPAIRS ldd ,X++
 
 MOVE40 ldy D.SysDAT Get system DAT image
  ldd (TMPRAM/DAT.BlSz)*2,Y
- stb DAT$Regs+(TMPRAM/DAT.BlSz) Restore $A000
+ stb DAT.Regs+(TMPRAM/DAT.BlSz) Restore $A000
  ldd (TMPRAM2/DAT.BlSz)*2,Y
- stb DAT$Regs+(TMPRAM2/DAT.BlSz) Restore $C000
+ stb DAT.Regs+(TMPRAM2/DAT.BlSz) Restore $C000
  puls CC
  ldd 14,S
  subd 12,S
- beq M0BEF
+ beq MOVE70
  std 14,S
  ldd ,S
  subd 12,S
- bne Z0BD7
- ldd #DAT.BlSzA
+ bne MOVE50
+ ldd #DAT.BlSz
  leax -DAT.BlSz,X
  inc 11,S
  inc 11,S
-M0BD7 std ,S
+MOVE50 std ,S
  ldd 2,S
  subd 12,S
- bne M0BEA
- ldd #D.BkSz
- leau -D.BkSz,U
+ bne MOVE60
+ ldd #DAT.BlSz
+ leau -DAT.BlSz,U
  inc 7,S
  inc 7,S
-M0BEA std 2,S
- lbra M0B6A
-M0BEF leas 16,S
-M0BF2 clrb
+MOVE60 std 2,S
+ lbra MOVE10
+MOVE70 leas 16,S
+MOVEX clrb
  puls D,X,Y,U,PC
 
 * Adjust pointer in X to be in $0000 - DAT.BlSz-1 range
@@ -1914,6 +2174,33 @@ TSK2DAT pshs B
  ldu B,U Get task's DAT img ptr
  puls B,PC
 
+* Load A from X in task B
+* Was Z0C12
+LDABX andcc #~Carry
+ pshs U,X,B,CC
+ bsr PTR2BK0
+ bsr TSK2DAT
+ ldd A,U Get DAT entry
+ orcc #IRQMask+FIRQMask Set interrupt masks
+ stb DAT.Regs+0 Map it in at $0
+ lda ,X Get byte
+ clr DAT.Regs+0 Restore system map
+ puls CC,B,X,U,PC
+
+* Store A at X in task B
+* Was Z0C28
+STABX andcc #~Carry
+ pshs U,X,D,CC
+ bsr PTR2BK0
+ bsr TSK2DAT
+ ldd A,U Get DAT entry
+ lda 1,S Get value
+ orcc #IRQMask+FIRQMask Set interrupt masks
+ stb DAT.Regs+0 Map it in at $0
+ sta ,X Get byte
+ clr DAT.Regs+0 Restore system map
+ puls CC,B,X,U,PC
+
 * Load B from X in task B
 * Was Z0C40
 LDBBX andcc #$FF-IRQMask-FIRQMask Clear interrupt masks
@@ -1922,13 +2209,106 @@ LDBBX andcc #$FF-IRQMask-FIRQMask Clear interrupt masks
  bsr TSK2DAT
  ldd A,U Get DAT entry
  orcc #IRQMask+FIRQMask Set interrupt masks
- stb DAT.Regs+0 Map in block
+ stb DAT.Regs+0 Map it in at $0
  ldb ,X Get byte
- clr DAT.Regs+0 Restore system block
+ clr DAT.Regs+0 Restore system map
  puls CC,A,X,U,PC
 
+ page
+*****
+*
+*  Subroutine AllTsk
+*
+* Allocate a process DAT task number
+*
 
- endc
+* F$AllTsk Service call entry
+ALLTK ldx R$X,U Get proc desc
+
+ALLTSK ldb P$Task,X Alredy have a task?
+ bne ALLTSKX yes; done
+ bsr M0CA6 Get free task to B
+ bcs ALLTSKXX err; none found
+ stb P$Task,X
+ALLTSKX clrb CLEAR Carry
+ALLTSKXX rts
+
+*****
+*
+*  Subroutine DelTsk
+*
+* Deallocate a process DAT task number
+*
+
+* F$DelTsk Service call entry
+* Was Z0C66
+DELTK ldx R$X,U Get proc desc
+
+DELTSK ldb P$Task,X Still have a task?
+ beq ALLTSKXX no; done
+ clr P$Task,X Not using task
+ bra M0CC3
+
+* Update DAT hardware if img changed
+* Was Z0C70
+UPDTSK lda P$State,X DAT img changed?
+ bita #ImgChg
+ bne SETTSK yes; update DAT regs
+ rts
+
+*****
+*
+*  Subroutine SetTsk
+*
+* Set a process' DAT registers
+*
+
+* F$SetTsk Service call entry
+* Was Z0C77
+SETTK ldx R$X,U Get proc desc
+
+* Was Z0C79
+SETTSK lda P$State,X Clear DAT img chg flag
+ anda #~ImgChg
+ sta P$State,X
+ andcc #~Carry CLEAR Carry
+ pshs U,Y,X,D,CC
+ ldb P$Task,X Get DAT task number
+ leax P$DATImg,X Point to DAT image
+ ldu D.TskIPt Get task image table ptr
+ aslb Task to offset
+ stx B,U Save DAT img ptr for task
+ cmpb #(SysTask+1)*2
+ bgt SETTSKX
+ ldu #DAT.Regs
+ leax 1,X Point to first block #
+ ldb #DAT.BlCt
+SETTSK10 lda ,X++ Get block # from process
+ sta ,U+ store in MMU
+ decb Count block set
+ bne SETTSK10 Branch if not enough
+SETTSKX puls CC,D,X,Y,U,PC
+
+*****
+*
+*  Subroutine ResTsk
+*
+* Reserve a DAT task number
+*
+
+* F$ResTsk Service call entry
+* Was Z0CA1
+
+*****
+*
+*  Subroutine RelTsk
+*
+* Release a DAT task number
+*
+
+* F$RelTsk Service call entry
+* Was Z0CC1
+
 
 
 
