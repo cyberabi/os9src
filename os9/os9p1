@@ -80,11 +80,11 @@ OS9Nam fcs /OS9p1/
 *********
 * Version Id
 *
- ifeq CPUType-Color3
-RamLimit set $EF00
- endc
- ifeq CPUType-Color
-RamLimit set $EF00
+ ifeq (CPUType-Color3)*(CPUType-Color)
+ModBase set $0D00 Lowest address for modules
+RamLimit set $ED00 Highest address for modules
+LoadAdr set $F000 Known load address of OS9P1 module
+BlkLimit set DAT.BlSz-$200 Last address to check before remapping block (???)
  endc
 
  ttl COLD Start
@@ -147,9 +147,9 @@ L0065 std ,X++
  cmpx #D.SWI+2
  bls L0065
 
- leax L0F00,pcr
+ leax VecEnd,pcr
  pshs X
- leay L0EDE,pcr
+ leay SYSVEC-2,pcr
  ldx #D.Clock
 L0079 ldd ,Y++
  addd ,S
@@ -165,18 +165,18 @@ L0079 ldd ,Y++
  leax DISPCH,pcr
  stx D.SysSVC
  stx D.XSWI2
- leax L0E12,pcr
+ leax SYSIRQ,pcr
  stx D.SysIRQ
  stx D.XIRQ
- leax L0E45,pcr
+ leax IRQPOLL,pcr
  stx D.SvcIRQ
- leax L0E49,pcr
+ leax POLL,pcr
  stx D.Poll
- leax L0E44,pcr
+ leax ALTIRQ,pcr
  stx D.AltIRQ
- leax L0E69,pcr
+ leax FLIP0,pcr
  stx D.Flip0
- leax L0E7D,pcr
+ leax FLIP1,pcr
  stx D.Flip1
 
 *
@@ -224,7 +224,7 @@ L0104 inc ,X+
 
  clr D.MemSz Assume 128K RAM
  ldd #$0313 Check pages 128K apart
- std DAT.Regs+(TMPRAM/DAT.BlSz) Map at A000, C000
+ std >DAT.Regs+(TMPRAM/DAT.BlSz) Map at A000, C000
  ldx #TMPRAM
  ldd #$DC78 Known different from current contents
  std ,X
@@ -250,7 +250,7 @@ L0136 lda D.MemSz Mem 512K?
 *
 * Find End Of Ram
 *
-COLD10 stb DAT.Regs+1 Map block at $2000
+COLD10 stb >DAT.Regs+1 Map block at $2000
  ldu 0,Y Get current value
  ldx #$00FF Get bit pattern
  stx 0,Y Store it
@@ -270,40 +270,41 @@ COLD17 puls X Get block map pointer
  bcs L0128
  ldx D.BlkMap
  inc ,X Another valid block
- ldx D.BlkMap+2
- leax >-1,X
+ ldx D.BlkMap+2 Get block map end ptr
+ leax >-1,X Point to last entry
  tfr X,D
- subd D.BlkMap
+ subd D.BlkMap Get index = starting block
  leas -DAT.ImSz,S
  leay 0,S
- lbsr L01F1
+ lbsr DATD2Y
  pshs X
- ldx #X0D00
+ ldx #ModBase Look for modules
 L017F pshs Y,X
- lbsr ADR2DAT
+ lbsr ADR2DAT Map the byte in
  ldb 1,Y
- stb DAT.Regs+0
- lda 0,X
+ stb >DAT.Regs+0
+ lda 0,X Get byte to check
  clr Dat.Regs+0
  puls X,Y
-
  cmpa #M$ID1 Possible module?
  bne L01A7 ..no; skip
- lbsr L0463 Validate module
+
+ lbsr VALMOD Validate module
  bcc L019D ..no error; continue
  cmpb #E$KwnMod
  bne L01A7
 
 L019D ldd #2
- lbsr L0B02
- leax D,X
+ lbsr LDDDXY Get length
+ leax D,X Get ptr past module
  bra L01A9
 
 L01A7 leax 1,X
- cmpx #X1E00 At end of block (skipping vecs and IO)
- bcs L017F
+L01A9 cmpx #BlkLimit Near end of block?
+ bcs L017F no; continue
+
  bsr L01D2
-L0180 leax L0264,pcr
+L0180 leax INITNAM,pcr
  bsr L01EB
  bcc L01BF
  OS9 F$Boot
@@ -319,12 +320,11 @@ L01C1 leax L0268,pcr
 L01CE jmp D.Crash
 L01D0 jmp ,Y
 
-XED00 equ $ED00
 L01D2 ldx D.SysMem
- leax (XED00/256),X
+ leax (RamLimit/256),X
  lda #X80 Reserve last page (I/O)
- sta ($FF-(XED00/256)),X
- ldb #($FF-(XED00/256)) Reserve high pages
+ sta ($FF-(RamLimit/256)),X
+ ldb #($FF-(RamLimit/256)) Reserve high pages
 
 L01DF lda #1
 L01E1 sta ,X+
@@ -339,15 +339,16 @@ L01EB lda #SYSTM Get system type module
  rts
 
 *
-* Copy DAT Image D to Y
+* Build DAT image from seed in D at Y
+* D is a page number and starting block
 *
-L01F1 pshs Y,X,D
+DATD2Y pshs Y,X,D
  ldb #(DAT.ImSz/2)
- ldx ,S
-L01F7 stx ,Y++
- leax 1,X
- decb
- bne L01F7
+ ldx ,S Get seed
+DATD2Y1 stx ,Y++ Save page and block
+ leax 1,X Increment block
+ decb Count down blocks
+ bne DATD2Y1 Branch if not enough
  puls D,X,Y,PC
 
 *****
@@ -370,9 +371,9 @@ SVCTBL equ *
  fcb SysState+F$SRtMem
  fdb SRTMEM-*-2
  fcb SysState+F$AProc
- fdb M0D0F-*-2 APRC
+ fdb APRC-*-2
  fcb SysState+F$NProc
- fdb M0D86-*-2 NXTPRC
+ fdb NXTPRC-*-2
  fcb SysState+F$VModul
  fdb VMOD-*-2
  fcb F$SSVC
@@ -382,7 +383,7 @@ SVCTBL equ *
  fcb SysState+F$Boot
  fdb BOOT-*-2
  fcb SysState+F$BtMem
- fdb M0820-*-2
+ fdb BTMEM-*-2
  fcb SysState+F$Move
  fdb MV-*-2
  fcb F$AllRam
@@ -400,11 +401,11 @@ SVCTBL equ *
  fcb SysState+F$DelTsk
  fdb DELTK-*-2
  fcb SysState+F$SetTsk
- fdb M0C77-*-2
+ fdb SETTK-*-2
  fcb SysState+F$ResTsk
- fdb M0CA1-*-2
+ fdb RESTK-*-2
  fcb SysState+F$RelTsk
- fdb M0CC1-*-2
+ fdb RELTK-*-2
  fcb SysState+F$DATLog
  fdb DATLG-*-2
  fcb SysState+F$LDAXY
@@ -421,19 +422,6 @@ SVCTBL equ *
  fdb FMOD-*-2
  fcb SysState+F$AlHRAM
  fdb AHRAM-*-2
-* but none of these
-* fcb F$FORK
-* fdb FORK-*-2
-* fcb F$Chain
-* fdb USRCHN-*-2
-* fcb F$Chain+$80
-* fdb SYSCHN-*-2
-* fcb F$SchBit
-* fdb SBIT-*-2
-* fcb F$AllBit
-* fdb ABIT-*-2
-* fcb F$DelBit
-* fdb DBIT-*-2
  fcb $80
 INITNAM fcs /Init/
 P2NAM fcs /OS9p2/
@@ -445,19 +433,19 @@ BOOTNAM fcs /Boot/
 SWIGO jmp [-16,X]
 
 * Dispatch SWI3
- ldx <D.Proc
+SWI3HN ldx <D.Proc
  ldu P$SWI3,X Did process hook SWI3?
  beq SWITCH no; continue
-SWIHOOK lbra M0E5E Go do hook
+SWIHOOK lbra DISPSWI Go do hook
 
 * Dispatch SWI2
- ldx <D.Proc
+SWI2HN ldx <D.Proc
  ldu P$SWI2,X Did process hook SWI2?
  beq SWITCH no; continue
  bra SWIHOOK
 
 * Dispatch SWI
- ldx <D.Proc
+SWIHN ldx <D.Proc
  ldu P$SWI,X Did process hook SWI?
  bne SWIHOOK yes; go do hook
 
@@ -530,7 +518,7 @@ CPYRGS1 ldd ,X++
  ldx D.SysDAT Restore system memory map
  lda (TMPRAM/DAT.BlSz)*2+1,X Get block
  ldb (TMPRAM/DAT.BlSz)*2+3,X Get 2nd block
- std DAT.Regs+(TMPRAM/DAT.BlSz) Map them in at TMPRAM
+ std >DAT.Regs+(TMPRAM/DAT.BlSz) Map them in at TMPRAM
  puls CC,X,Y,U,PC
 
  page
@@ -546,7 +534,7 @@ CPYRGS1 ldd ,X++
 DISPCH leau ,S Get register pointer
  lda D.SSTskN Get task number of system
  clr D.SSTskN
- pshs A
+ pshs A Save for DAT setup
  lda R$CC,U
  tfr A,CC
  ldx R$PC,U Get program counter
@@ -627,16 +615,6 @@ SETSVC ldb ,Y+ Get next routine offset
  cmpb #$80 End of table code?
  bne SETS30 Branch if not
  rts
-
-*SETS10 tfr B,A copy routine offset
-* anda #$7F mask upper bit
-* cmpa #$7F Is routine Ioman?
-* beq SETS30 Bra if so
-* cmpa #SVCTSZ/2 Is routine offset legal?
-* bcs SETS30 Bra if so
-* comb set carry
-* ldb #E$ISWI return error
-* rts
 
  page
 *****
@@ -789,12 +767,6 @@ NOTMAPD puls Y,U
  bcc ISMAPD1 no; try again
  puls D,X,Y,PC No match
  
-* ldu 0,S Get register ptr
-* ldd M$TYPE,Y Get type/lang & attr/revs
-* std R$D,U
-* ldd M$EXEC,Y Get execution offset
-
-
 *****
 *
 *  Subroutine Valmod
@@ -1414,7 +1386,9 @@ CHKN20 decb LAST Char of pathname?
 * System Memory Request
 *
 
+* F$BtMem Service call entry
 * F$SRqMem Service call entry
+BTMEM equ *
 SRQMEM ldd R$D,U Get byte count
  addd #$FF Round up to page
  clrb
@@ -1530,7 +1504,7 @@ SRTM5 ldb R$U+0,U Starting page in memory
  ldx D.SysMem Get sys mem map ptr
  abx Get ptr to this range
 SRTM10 ldb ,X Get map value
- andb #~RAMInUse Mark as free
+ andb #$FF-RAMInUse Mark as free
  stb ,X++
  deca Count down pages
  bne SRTM10 Branch if not enough
@@ -1887,7 +1861,6 @@ SETIMG10 ldx ,U++ Copy
  clrb CLEAR Carry
  puls D,X,Y,U,PC
 
-
  page
 *****
 *
@@ -1951,9 +1924,9 @@ ELDAXY ldx R$X,U Get block offset
 LDAYX pshs CC
  lda 1,Y
  orcc #IRQMask+FIRQMask Set interrupt masks
- sta DAT.Regs+0 Map at first block
+ sta >DAT.Regs+0 Map at first block
  lda ,X
- clr DAT.Regs+0 Restore first block
+ clr >DAT.Regs+0 Restore first block
  puls CC,PC
 
 * Load A from X+ in DAT Y
@@ -1962,9 +1935,9 @@ LDAYX pshs CC
 LDAYXP lda 1,Y
  pshs CC
  orcc #IRQMask+FIRQMask Set interrupt masks
- sta DAT.Regs+0 Map at first block
+ sta >DAT.Regs+0 Map at first block
  lda ,X+
- clr DAT.Regs+0 Restore first block
+ clr >DAT.Regs+0 Restore first block
  puls CC
  bra ADR2DAT Modulo block size
 
@@ -2102,7 +2075,7 @@ MOVE20 std 15,S Save byte count
  rorb
  tfr D,Y
  puls D Get DAT values
- std DAT.Regs+(TMPRAM/DAT.BlSz) Map in at $A000 and $C000
+ std >DAT.Regs+(TMPRAM/DAT.BlSz) Map in at $A000 and $C000
  bcc MVPAIRS
 
  lda ,X+ Copy first byte
@@ -2117,9 +2090,9 @@ MVPAIRS ldd ,X++
 
 MOVE40 ldy D.SysDAT Get system DAT image
  ldd (TMPRAM/DAT.BlSz)*2,Y
- stb DAT.Regs+(TMPRAM/DAT.BlSz) Restore $A000
+ stb >DAT.Regs+(TMPRAM/DAT.BlSz) Restore $A000
  ldd (TMPRAM2/DAT.BlSz)*2,Y
- stb DAT.Regs+(TMPRAM2/DAT.BlSz) Restore $C000
+ stb >DAT.Regs+(TMPRAM2/DAT.BlSz) Restore $C000
  puls CC
  ldd 14,S
  subd 12,S
@@ -2176,29 +2149,29 @@ TSK2DAT pshs B
 
 * Load A from X in task B
 * Was Z0C12
-LDABX andcc #~Carry
+LDABX andcc #$FF-Carry
  pshs U,X,B,CC
  bsr PTR2BK0
  bsr TSK2DAT
  ldd A,U Get DAT entry
  orcc #IRQMask+FIRQMask Set interrupt masks
- stb DAT.Regs+0 Map it in at $0
+ stb >DAT.Regs+0 Map it in at $0
  lda ,X Get byte
- clr DAT.Regs+0 Restore system map
+ clr >DAT.Regs+0 Restore system map
  puls CC,B,X,U,PC
 
 * Store A at X in task B
 * Was Z0C28
-STABX andcc #~Carry
+STABX andcc #$FF-Carry
  pshs U,X,D,CC
  bsr PTR2BK0
  bsr TSK2DAT
  ldd A,U Get DAT entry
  lda 1,S Get value
  orcc #IRQMask+FIRQMask Set interrupt masks
- stb DAT.Regs+0 Map it in at $0
+ stb >DAT.Regs+0 Map it in at $0
  sta ,X Get byte
- clr DAT.Regs+0 Restore system map
+ clr >DAT.Regs+0 Restore system map
  puls CC,B,X,U,PC
 
 * Load B from X in task B
@@ -2209,9 +2182,9 @@ LDBBX andcc #$FF-IRQMask-FIRQMask Clear interrupt masks
  bsr TSK2DAT
  ldd A,U Get DAT entry
  orcc #IRQMask+FIRQMask Set interrupt masks
- stb DAT.Regs+0 Map it in at $0
+ stb >DAT.Regs+0 Map it in at $0
  ldb ,X Get byte
- clr DAT.Regs+0 Restore system map
+ clr >DAT.Regs+0 Restore system map
  puls CC,A,X,U,PC
 
  page
@@ -2225,11 +2198,13 @@ LDBBX andcc #$FF-IRQMask-FIRQMask Clear interrupt masks
 * F$AllTsk Service call entry
 ALLTK ldx R$X,U Get proc desc
 
+* Was Z0C58
 ALLTSK ldb P$Task,X Alredy have a task?
  bne ALLTSKX yes; done
  bsr M0CA6 Get free task to B
  bcs ALLTSKXX err; none found
  stb P$Task,X
+ bsr SETTSK
 ALLTSKX clrb CLEAR Carry
 ALLTSKXX rts
 
@@ -2241,9 +2216,9 @@ ALLTSKXX rts
 *
 
 * F$DelTsk Service call entry
-* Was Z0C66
 DELTK ldx R$X,U Get proc desc
 
+* Was Z0C68
 DELTSK ldb P$Task,X Still have a task?
  beq ALLTSKXX no; done
  clr P$Task,X Not using task
@@ -2269,9 +2244,9 @@ SETTK ldx R$X,U Get proc desc
 
 * Was Z0C79
 SETTSK lda P$State,X Clear DAT img chg flag
- anda #~ImgChg
+ anda #$FF-ImgChg
  sta P$State,X
- andcc #~Carry CLEAR Carry
+ andcc #$FF-Carry CLEAR Carry
  pshs U,Y,X,D,CC
  ldb P$Task,X Get DAT task number
  leax P$DATImg,X Point to DAT image
@@ -2297,7 +2272,26 @@ SETTSKX puls CC,D,X,Y,U,PC
 *
 
 * F$ResTsk Service call entry
-* Was Z0CA1
+RESTK bsr RESTSK
+ stb R$B,U Return DAT task number
+ rts
+
+* Was Z0CA6
+RESTSK pshs X
+ ldb #2 Skip system entries
+ ldx D.Tasks Get task map
+RESTSK10 lda B,X In use?
+ beq RESTSK20 no; return it
+ incb Next task
+ cmpb #DAT.TkCt At end?
+ bne RESTSK10 no; try next
+ comb SET Carry
+ ldb #E$NoTask Return error
+ bra RESTSKX
+RESTSK20 inc B,X Set RAMInUse
+ orb D.SysTsk 0 on CoCo; $20 on Gimix
+ clra CLEAR Carry
+RESTSKX puls X,PC
 
 *****
 *
@@ -2307,7 +2301,549 @@ SETTSKX puls CC,D,X,Y,U,PC
 *
 
 * F$RelTsk Service call entry
-* Was Z0CC1
+RELTK ldb R$B,U Get DAT task number
+
+* Was Z0CC3
+RELTSK pshs X,B
+ ldb D.SysTask Get system task
+ comb
+ andb ,S Strip system task bit
+ beq RELTSKX if zero, don't release
+ ldx D.Tasks Get task map
+ clr B,X Mark as NotInUse
+RELTSKX puls B,X,PC
+
+ page
+*****
+*
+*  Clock Tick Routine
+*
+* Wake Sleeping Processes
+* Was Z0CD2
+*
+TICK ldx D.SProcQ Get sleeping queue ptr
+ beq SLICE Branch if none
+ lda P$State,X Get process status
+ bita #TimSleep Is it in timed sleep?
+ beq SLICE Branch if not
+ ldu P$SP,X Get stack ptr
+ ldd R$X,U Get tick count
+ subd #1 Count down
+ std R$X,U Update tick count
+ bne SLICE Branch if ticks left
+TICK10 ldu P$Queue,X Get next process ptr
+ bsr ACTPRC Activate process
+ leax 0,U Copy process ptr
+ beq TICK20 Branch if end of queue
+ lda P$State,X Get process status
+ bita #TimSleep In timed sleep?
+ beq TICK20 Branch if not
+ ldu P$SP,X Get stack ptr
+ ldd R$X,U Get tick count
+ beq TICK10 Branch if time
+TICK20 stx D.SProcQ Update sleep queue ptr
+*
+* Update Time Slice counter
+*
+SLICE dec D.Slice Count tick
+ bne SLIC10 Branch if slice not over
+ inc D.Slice
+*
+* If Process not in System State, Give up Time-Slice
+*
+ ldx D.PROC Get current process ptr
+ beq SLIC10 Branch if none
+ lda P$State,X Get status
+ ora #TIMOUT Set time-out flag
+ sta P$State,X Update process status
+SLIC10 clrb
+ rts
+
+ page
+*****
+*
+*  Subroutine Actprc
+*
+* Put Process In Active Process Queue
+*
+APRC ldx R$X,U
+
+* Was Z0D11
+ACTPRC clrb
+ pshs U,Y,X,B,CC Save registers
+ lda P$Prior,X Get process priority/age
+ sta P$AGE,X Set age to priority
+ orcc #IRQMask+FIRQMask Set interrupt masks
+*
+* Age Active Processes
+*
+ ldu #D.AProcQ-P$Queue Fake process ptr
+ bra ACTP30
+ACTP10 inc P$AGE,U
+ bne ACTP20 Branch if not highest
+ dec P$AGE,U Restore
+ACTP20 cmpa P$AGE,U Who has bigger priority?
+ bhi ACTP35 Branch if our process
+ACTP30 leay 0,U Copy ptr to this process
+ACTP35 ldu P$Queue,U Get ptr to next process
+ bne ACTP10 Branch if more
+ ldd P$Queue,Y Swap positions
+ stx P$Queue,Y
+ std P$Queue,X
+ puls CC,B,X,Y,U,PC
+
+ page
+*****
+*
+*  Interrupt Service Routine Usrirq
+*
+* Handles Irq While In User State
+* Was Z0D37
+*
+IRQHN equ *
+USRIRQ ldx D.Proc Get proc ptr
+ sts P$SP,X Save current process stack pointer
+ lds D.SysStk Get stack pointer
+ ldd D.SysSVC Get system request routine
+ std D.XSWI2
+ ldd D.SysIRQ Get system irq routine
+ std D.XIRQ
+ jsr [D.SvcIRQ]
+ bcc M0D5B
+ ldx D.PROC Get process ptr
+ ldb P$Task,X Get DAT task ptr
+ ldx P$SP,X Get stack ptr
+ lbsr LDABX Get caller's CC
+ ora #IRQMask+FIRQMask Set interrupt masks
+ lbsr STABX
+M0D5B orcc #IRQMask+FIRQMask Set interrupt masks
+ ldx D.PROC Get process ptr
+ lda P$State,X
+ bita #TIMOUT Is time-slice over?
+ bne M0D7C yes; swap
+ ldu #D.AProcQ-P$Queue Fake process ptr
+ ldb #Suspend
+M0D6A ldu P$Queue,U Walk linked list
+ beq M0D78 Branch if end
+ bitb P$State,U Is it suspended?
+ bne M0D6A yes; try next proc
+ ldb P$Prior,X
+ cmpb P$Prior,U Who has bigger priority?
+ blo M0D7C queued proces; continue
+M0D78 ldu P$SP,X Get process stack pointer
+ bra M0DB9
+M0D7C anda #$FF-TIMOUT Clear time-out flag
+ sta P$State,X Update status
+ lbsr DELTSK Free the task DAT
+M0D83 lbsr ACTPRC M0D83 Put in active queue
+
+*****
+*
+*  Subroutine NxtPrc
+*
+* Start the next process
+*
+
+* F$NProc Service call entry
+* Was Z0D86
+NXTPRC ldx D.SysPrc Get system proc
+ std D.PROC Clear current process
+ lds D.SysStk Get stack ptr
+ andcc #$FF-IRQMask-FIRQMask Clear interrupt masks
+ bra NXTP06
+*
+* Loop until there is a Process in the Active Queue
+*
+NXTP04 cwai #$FF-IRQMask-FIRQMask Clear interrupt masks & wait
+NXTP06 orcc #IRQMask+FIRQMask Set interrupt masks
+ lda #Suspend
+ ldx #D.AProcQ-P$Queue Fake process ptr
+NXTP07 leay ,X Get process ptr
+ ldx P$Queue,Y Get next process ptr
+ beq NXTP04 Branch if none
+ bita P$State,X Is process suspended?
+ bne NXTP07 Branch if yes
+*
+* Remove Process from Active Queue
+*
+ ldd P$Queue,X Get next process ptr
+ std P$Queue,Y Remove first from active queue
+ stx D.PROC Set current process
+ lbsr ALLTSK Allocate it a DAT
+ bcs USRR20 If error, re-queue it
+ lda D.TSlice Get ticks/time-slice
+ sta D.Slice Reset slice tick count
+ ldu P$SP,X Get stack ptr
+*
+* Check Process Status, check for Signal pending
+*
+CURPRC lda P$State,X Is process in system state?
+ bmi NXTP30 Branch if so
+CURPRC2 bita #CONDEM Is process condemmed?
+ bne NXTOUT Branch if so
+ lbsr UPDTSK Refresh DAT
+ ldb P$Signal,X Is a signal waiting?
+ beq NXTP20 Branch if not
+ decb Wake-up Signal?
+ beq NXTP10 Branch if so
+ leas -R$Size,S Get ptr to stash regs
+ leau ,S Destination
+ lbsr SAVRGS Save caller's regs
+ lda P$Signal,X
+ sta R$B,U Signal code in B
+*
+* Signal is pending; If an Intercept has been set
+* Build an Interrupt Stack for User
+*
+ ldd P$SigVec,X Get intercept vector
+ beq NXTOUT Branch if none
+ std R$PC,U Set as exec addr
+ ldd P$SigDat,X Get intercept data address
+ std R$U,U Data ptr in U
+ ldd P$SP,X Get stack ptr
+ subd #R$Size Room for registers
+ std P$SP,X
+ lbsr RSTRGS Restore process regs
+ leas R$Size,S Clean stack
+ ldu P$SP,X Get process stack ptr
+ clrb
+NXTP10 stb P$Signal,X Clear signal
+*
+* Switch to User State
+*
+NXTP20 ldd D.UsrSvc Get user service request
+ std D.SWI2
+ ldd D.UsrIRQ Get user irq
+ std D.SvcIRQ
+ lbra M0E4C Start next process
+NXTP30 lda P$State,X Set system state
+ ora #SysState
+ sta P$State,X
+ leas P$Stack,X Get clean stack ptr
+ andcc #$FF-IRQMask-FIRQMask Clear interrupt masks
+ ldb P$Signal,X Get termination code
+ clr P$Signal,X Clear signal
+ OS9 F$EXIT Terminate process
+
+ page
+*****
+*
+*  Interrupt Routine Sysirq
+*
+* Handles Irq While In System State
+*
+SYSIRQ lda D.SSTskN Get task number of system
+ clr D.SSTskN
+ pshs A
+ jsr [D.SvcIRQ]
+ puls A
+ bsr SETDAT
+ bcc SYSI10 branch if interrupt identified
+ ldb R$CC,S get condition codes
+ orb #IRQMask set interrupt mask
+ stb R$CC,S update condition codes
+SYSI10 rti
+
+* Was Z0E29
+M0E29 clr ,-S Set system DAT slot
+M0E2B ldx D.SysPrc Get system proc ptr
+ lbsr UPDTSK Update DAT
+ orcc #IRQMask+FIRQMask Set interrupt masks
+ puls A
+ bsr SETDAT
+ leas ,U Get stack ptr
+ rti
+
+* Set the DAT task from A
+* Was Z0E39
+SETDAT sta D.SSTskN
+ beq SETDATX Branch if no change needed
+ ora D.TINIT Update GIME INIT1 timer/task reg
+ sta D.TINIT
+ sta >DAT.Task
+ALTIRQ EQU *
+SETDATX rts
+
+ page
+*****
+*
+*  Polling Routine Irqpoll
+*
+* Poll for interrupts
+*
+
+* Was Z0E45
+IRQPOLL jmp [D.POLL] Call irq polling
+
+* Dummy polling routine
+* Was Z0E49
+POLL orcc #CARRY
+ rts
+
+ page
+* Was Z0E4C
+M0E4C ldb P$Task,X Get task number
+ orcc #IRQMask+FIRQMask Set interrupt masks
+ bsr HWTSK1
+ lda D.TINIT Fetch GIME INIT1 timer/task reg
+ ora #1 Switch task to user
+ sta D.TINIT
+ sta >DAT.Task
+ leas ,U Get stack pointer
+ rti
+
+*****
+*
+*  Dispatch User Swi Interrupt Hook
+*
+* Handle user's SWI hook in U
+*
+
+* Was Z0E5E
+DISPSWI ldb D.TINIT Fetch GIME INIT1 timer/task reg
+ orb #1 Switch task to user
+ stb D.TINIT
+ stb >DAT.Task
+ jmp ,U Dispatch to user's vector
+
+ page
+*****
+*
+*  Change to Task 0 (system)
+*
+
+* Was Z0E69
+FLIP0 pshs D Save CC image
+ lda D.TINIT Fetch GIME INIT1 timer/task reg
+ anda #$FF-1 Switch task to system
+ sta D.TINIT
+ sta >DAT.Task
+ clr D.SSTskN System is using task 0
+ puls D
+ tfr X,S Get stack pointer
+ tfr A,CC Restore flags
+ rts
+
+*****
+*
+*  Change to reserved Task 1 (user)
+*
+
+* Was Z0E7D
+FLIP1 ldb #1 Reserved task
+ bsr HWTSK1
+ lda D.TINIT Fetch GIME INIT1 timer/task reg
+ ora #1 Switch task to user
+ sta D.TINIT
+ sta >DAT.Task
+ inc D.SSTskN System is using task 1
+ rti
+
+* Program hardware DAT task 1 from task in B
+* Was Z0E8D
+HWTSK1 pshs U,X,D
+ ldx #DAT.Regs+DAT.BlCt Get DAT HW task 1 ptr
+ ldu D.TskIpt Get list of task img ptrs
+ aslb Get offset for task
+ ldu B,U Get data ptr
+ leau 1,U Get first blk ptr
+ ldb #DAT.BlCt
+HWTSK1L lda ,U++ Get block
+ sta ,X+ Set block
+ decb
+ bne HWTSK1L
+ puls D,X,U,PC
+
+ page
+*****
+*
+*  Vectors
+*
+
+* SWI3 vector
+* Was Z0EA4
+VSWI3 orcc #IRQMask+FIRQMask Set interrupt masks
+ ldb #D.SWI3
+ bra VECINT
+
+* SWI2 vector
+* Was Z0EAA
+VSWI2 orcc #IRQMask+FIRQMask Set interrupt masks
+ ldb #D.SWI2
+ bra VECINT
+
+* FIRQ vector
+* Was Z0EB0
+VFIRQ ldb #D.FIRQ
+ bra VECINT
+
+* IRQ vector
+* Was Z0EB4
+VIRQ orcc #IRQMask+FIRQMask Set interrupt masks
+ ldb #D.IRQ
+
+* Switch?
+* Was Z0EB8
+VECINT lda #0 System HW DAT
+ sta >DAT.Task Set GIME INIT1 timer/task reg
+ clra SET Direct page
+ tfr A,DP
+ lda D.TINIT Fetch GIME INIT1 timer/task reg
+ anda #$FF-1 Switch task to system
+ sta D.TINIT
+ sta >DAT.Task
+ clra High byte of vector
+ tfr D,X Get vec ptr
+ jmp [,X] Dispatch interrupt
+
+* SWI vector
+* Was Z0ECE
+VSWI ldb #D.SWI
+ bra VECINT
+
+* NMI vector
+* Was Z0ED2
+VNMI ldb #D.NMI
+ bra VECINT
+
+ ifne 0
+
+***** EMOD
+
+* but none of these
+* fcb F$FORK
+* fdb FORK-*-2
+* fcb F$Chain
+* fdb USRCHN-*-2
+* fcb F$Chain+$80
+* fdb SYSCHN-*-2
+* fcb F$SchBit
+* fdb SBIT-*-2
+* fcb F$AllBit
+* fdb ABIT-*-2
+* fcb F$DelBit
+* fdb DBIT-*-2
+
+*SETS10 tfr B,A copy routine offset
+* anda #$7F mask upper bit
+* cmpa #$7F Is routine Ioman?
+* beq SETS30 Bra if so
+* cmpa #SVCTSZ/2 Is routine offset legal?
+* bcs SETS30 Bra if so
+* comb set carry
+* ldb #E$ISWI return error
+* rts
+
+* ldu 0,S Get register ptr
+* ldd M$TYPE,Y Get type/lang & attr/revs
+* std R$D,U
+* ldd M$EXEC,Y Get execution offset
+
+ ldx D.PROC Get process
+ ldd D.SysSVC Get system request routine
+ std D.SWI2
+ ldd D.SysIRQ Get system irq routine
+ std D.SvcIRQ
+ leau 0,S Copy user stack ptr
+ stu P$SP,X
+ lda P$State,X Set system state
+ ora #SysState
+ sta P$State,X
+ jmp 0,Y Go to post-switch routine
+USRI10 jsr [D.POLL] Call irq polling routine
+ bcc USRI20 branch if interrupt identified
+ ldb R$CC,S get condition codes
+ orb #IRQMask set interrupt mask
+ stb R$CC,S update condition codes
+USRI20 lbra USRRET
+
+
+ leas ,U Get stack pointer
+ 
+ lda D.SSTskN Get task number of system
+ clr D.SSTskN
+ pshs A
+ lda R$CC,U
+
+ ldd R$Y,S Get user y register
+ pshs D,Y,U Build partial stack
+ ldu R$X+6,S Get user x register
+ lda P$Signal,X Get signal
+ ldb R$DP+6,S Get direct page
+ tfr D,Y Copy registers
+ ldd R$CC+6,S Get registers
+ pshs D,Y,U Complete stack
+ clrb
+ ldb P$Task,X Get task number
+ ldx R$PC,U Get program counter
+ lbsr LDBBX Get service code to B
+ leax 1,X Skip service code
+ stx R$PC,U Update program counter
+ ldy D.UsrDis
+ lbsr M033B
+ ldb ,U
+ andb #$FF-IRQMask-FIRQMask Clear interrupt masks
+ stb ,U
+ ldx D.Proc
+ bsr RSTRGS Restore caller's regs
+ lda P$State,X Clear system state
+ anda #$FF-SysState
+ lbra M0D7C
+
+
+
+
+USRRET ldx D.PROC Get process ptr
+ beq NXTPRC Branch if none
+ orcc #IRQMask+FIRQMask Set interrupt masks
+ ldb P$State,X Clear system state
+ andb #$FF-SysState
+ stb P$State,X Update status
+ bitb #TIMOUT Is time-slice over?
+ beq CURPRC Branch if not
+ andb #$FF-TIMOUT Clear time-out flag
+ stb P$State,X Update status
+USRR20 bsr ACTPRC Put in active queue
+ bra NXTPRC Start next process
+
+
+*
+* If Process not in System State, Give up Time-Slice
+*
+* ldx D.PROC Get current process ptr
+* beq SLIC10 Branch if none
+* lda P$State,X Get status
+* ora #TIMOUT Set time-out flag
+* sta P$State,X Update process status
+* bpl SLIC20 Branch if user state
+*SLIC10 rti
+*SLIC20 leay USRRET,PCR Set transfer ptr
+* bra SWITCH Switch to system state
+
+
+
+
+ lds P$SP,X Get stack ptr
+* cmpa P$AGE,U
+* ldu P$Queue,U Get next process
+* bne ACTP10 Branch if more
+*
+* Sort New Process Into Queue
+*
+* ldu #D.AProcQ-P$Queue Fake process ptr
+* lda P$Prior,X Get process priority/age
+* sta P$AGE,X Set age to priority
+* orcc #IRQMask+FIRQMask Set interrupt masks
+*ACTP30 leay 0,U Copy ptr to this process
+* ldu P$Queue,U Get ptr to next process
+* beq ACTP40 Branch if no more
+ cmpa P$AGE,U Who has bigger priority?
+ bls ACTP30 Branch if queue process
+ACTP40 stu P$Queue,X Insert into list
+ stx P$Queue,Y
+ clrb CLEAR Carry
+ puls Y,U,PC
+
 
 
 
@@ -2358,6 +2894,10 @@ ZFMOD30 puls B,Y,U Retrieve registers
  bcs FMOD10 Branch if not
 ZFMOD35 comb SET Carry
 ZFMOD40 puls D,X,Y,U,PC
+
+
+
+
 
 
 * tfr A,B Copy type
@@ -2613,7 +3153,7 @@ NMIHN equ FIRQHN
 *
 * Handles Irq While In User State
 *
-USRIRQ leay <USRI10,PCR Get post-switch routine
+ZUSRIRQ leay <USRI10,PCR Get post-switch routine
 ZSWITCH clra SET Direct page
  tfr A,DP
  ldx D.PROC Get process
@@ -2627,14 +3167,12 @@ ZSWITCH clra SET Direct page
  ora #SysState
  sta P$State,X
  jmp 0,Y Go to post-switch routine
-USRI10 jsr [D.POLL] Call irq polling routine
+ZUSRI10 jsr [D.POLL] Call irq polling routine
  bcc USRI20 branch if interrupt identified
  ldb R$CC,S get condition codes
  orb #IRQMask set interrupt mask
  stb R$CC,S update condition codes
-USRI20 lbra USRRET
-
-
+ZUSRI20 lbra USRRET
 
 *****
 *
@@ -2642,14 +3180,14 @@ USRI20 lbra USRRET
 *
 * Handles Irq While In System State
 *
-SYSIRQ clra clear direct page
+ZSYSIRQ clra clear direct page
  tfr A,DP
  jsr [D.POLL] Call irq polling
  bcc SYSI10 branch if interrupt identified
  ldb R$CC,S get condition codes
  orb #IRQMask set interrupt mask
  stb R$CC,S update condition codes
-SYSI10 rti
+ZSYSI10 rti
 
 
 
@@ -2659,89 +3197,6 @@ SYSI10 rti
 *
 IOPOLL comb set carry
  rts
- page
-*****
-*
-*  Clock Tick Routine
-*
-* Wake Sleeping Processes
-*
-TICK ldx D.SProcQ Get sleeping queue ptr
- beq SLICE Branch if none
- lda P$State,X Get process status
- bita #TimSleep Is it in timed sleep?
- beq SLICE Branch if not
- ldu P$SP,X Get stack ptr
- ldd R$X,U Get tick count
- subd #1 Count down
- std R$X,U Update tick count
- bne SLICE Branch if ticks left
-TICK10 ldu P$Queue,X Get next process ptr
- bsr ACTPRC Activate process
- leax 0,U Copy process ptr
- beq TICK20 Branch if end of queue
- lda P$State,X Get process status
- bita #TimSleep In timed sleep?
- beq TICK20 Branch if not
- ldu P$SP,X Get stack ptr
- ldd R$X,U Get tick count
- beq TICK10 Branch if time
-TICK20 stx D.SProcQ Update sleep queue ptr
-*
-* Update Time Slice counter
-*
-SLICE dec D.Slice Count tick
- bne SLIC10 Branch if slice not over
- lda D.TSlice Get ticks/time-slice
- sta D.Slice Reset slice tick count
-*
-* If Process not in System State, Give up Time-Slice
-*
- ldx D.PROC Get current process ptr
- beq SLIC10 Branch if none
- lda P$State,X Get status
- ora #TIMOUT Set time-out flag
- sta P$State,X Update process status
- bpl SLIC20 Branch if user state
-SLIC10 rti
-SLIC20 leay USRRET,PCR Set transfer ptr
- bra SWITCH Switch to system state
- page
-*****
-*
-*  Subroutine Actprc
-*
-* Put Process In Active Process Queue
-*
-APRC ldx R$X,U
-ACTPRC pshs Y,U Save registers
-*
-* Age Active Processes
-*
- ldu #D.AProcQ-P$Queue Fake process ptr
- bra ACTP20
-ACTP10 ldb P$AGE,U Get age
- incb
- beq ACTP20 Branch if highest
- stb P$AGE,U
-ACTP20 ldu P$Queue,U Get next process
- bne ACTP10 Branch if more
-*
-* Sort New Process Into Queue
-*
- ldu #D.AProcQ-P$Queue Fake process ptr
- lda P$Prior,X Get process priority/age
- sta P$AGE,X Set age to priority
- orcc #IRQMask+FIRQMask Set interrupt masks
-ACTP30 leay 0,U Copy ptr to this process
- ldu P$Queue,U Get ptr to next process
- beq ACTP40 Branch if no more
- cmpa P$AGE,U Who has bigger priority?
- bls ACTP30 Branch if queue process
-ACTP40 stu P$Queue,X Insert into list
- stx P$Queue,Y
- clrb CLEAR Carry
- puls Y,U,PC
  page
 *****
 *
@@ -2755,7 +3210,7 @@ USRREQ leay <USRR10,PCR Get post-switch routine
 USRR10 andcc #$FF-IRQMask-FIRQMask Clear interrupt masks
  ldy D.UsrDis Get user service routine table
  bsr DISPCH Go do request
-USRRET ldx D.PROC Get process ptr
+ZUSRRET ldx D.PROC Get process ptr
  beq NXTPRC Branch if none
  orcc #IRQMask+FIRQMask Set interrupt masks
  ldb P$State,X Clear system state
@@ -2765,7 +3220,7 @@ USRRET ldx D.PROC Get process ptr
  beq CURPRC Branch if not
  andb #$FF-TIMOUT Clear time-out flag
  stb P$State,X Update status
-USRR20 bsr ACTPRC Put in active queue
+ZUSRR20 bsr ACTPRC Put in active queue
  bra NXTPRC Start next process
 
 
@@ -2833,21 +3288,21 @@ ZBADSVC comb SET Carry
 * Starts next Process in Active Queue
 * If no Active Processes, Wait for one
 *
-NXTOUT ldb P$State,X Get process status
+ZNXTOUT ldb P$State,X Get process status
  orb #SysState Set system state
  stb P$State,X Update status
  ldb P$Signal,X Return fatal signal
  andcc #$FF-IRQMask-FIRQMask Clear interrupt masks
  OS9 F$EXIT Terminate process
-NXTPRC clra
+ZNXTPRC clra
  clrb
  std D.PROC Clear current process
  bra NXTP06
 *
 * Loop until there is a Process in the Active Queue
 *
-NXTP04 cwai #$FF-IRQMask-FIRQMask Clear interrupt masks & wait
-NXTP06 orcc #IRQMask+FIRQMask Set interrupt masks
+ZNXTP04 cwai #$FF-IRQMask-FIRQMask Clear interrupt masks & wait
+ZNXTP06 orcc #IRQMask+FIRQMask Set interrupt masks
  ldx D.AProcQ Get first process in active queue
  beq NXTP04 Branch if none
 *
@@ -2860,7 +3315,7 @@ NXTP06 orcc #IRQMask+FIRQMask Set interrupt masks
 *
 * Check Process Status, check for Signal pending
 *
-CURPRC ldb P$State,X Is process in system state?
+ZCURPRC ldb P$State,X Is process in system state?
  bmi NXTP30 Branch if so
  bitb #CONDEM Is process condemmed?
  bne NXTOUT Branch if so
@@ -2884,15 +3339,15 @@ CURPRC ldb P$State,X Is process in system state?
  ldd R$CC+6,S Get registers
  pshs D,Y,U Complete stack
  clrb
-NXTP10 stb P$Signal,X Clear signal
+ZNXTP10 stb P$Signal,X Clear signal
 *
 * Switch to User State
 *
-NXTP20 ldd P$SWI2,X Get user service request
+ZNXTP20 ldd P$SWI2,X Get user service request
  std D.SWI2
  ldd D.UsrIRQ Get user irq
  std D.SvcIRQ
-NXTP30 rti Start next process
+ZNXTP30 rti Start next process
 
 
 *****
@@ -3490,21 +3945,82 @@ CpyVec1 lda ,x+ copy from vector table
 * bcs COLD10 Branch if more
 * leay 0,X Copy end-of-ram ptr
 
+ endc
+
  emod
 OS9End equ *
 
  page
  ifeq (CPUType-Color)*(CPUType-Color3)
+*****
+* Tandy Color Computer CPU patch
+*
+* This CPU uses the area between $FF00 and $FFEF for I/O
+* OS9 is loaded into RAM
+*
+
+*
+* Generate Rtses until secondary vectors at $FEDE
+*
+ ifle *-($EDE-16)
+ fcc /9999999999999999/
+ endc
+ ifle *-($EDE-16)
+ fcc /9999999999999999/
+ endc
+ ifle *-($EDE-16)
+ fcc /9999999999999999/
+ endc
+ ifle *-($EDE-16)
+ fcc /9999999999999999/
+ endc
+ ifle *-($EDE-16)
+ fcc /9999999999999999/
+ endc
+ ifle *-($EDE-16)
+ fcc /9999999999999999/
+ endc
+ ifle *-($EDE-16)
+ fcc /9999999999999999/
+ endc
+ ifle *-($EDE-16)
+ fcc /9999999999999999/
+ endc
+ ifle *-($EDE-8)
+ fcc /99999999/
+ endc
+ ifle *-($EDE-4)
+ fcc /9999/
+ endc
+ ifle *-($EDE-2)
+ fcc /99/
+ endc
+ ifle *-($EDE-1)
+ fcc /9/
+
 *
 * Os-9 System Entries
+* These are relative to VecEnd
 *
- fdb TICK Clock tick handler
-SYSVEC fdb SWI3HN Swi3 handler
- fdb SWI2HN Swi2 handler
- fdb FIRQHN Fast irq handler
- fdb IRQHN Irq handler
- fdb SWIHN Swi handler
- fdb NMIHN Nmi handler
+ fdb TICK-VecEnd Clock tick handler
+SYSVEC fdb SWI3HN-VecEnd Swi3 handler
+ fdb SWI2HN-VecEnd Swi2 handler
+ fdb 0-VecEnd Fast irq handler (none)
+ fdb IRQHN-VecEnd Irq handler
+ fdb SWIHN-VecEnd Swi handler
+ fdb 0-VecEnd Nmi handler (none)
+
+ fdb $0055
+
+* Vector dispatch
+* Was Z0EEE
+ lbra VSWI3
+ lbra VSWI2
+ lbra VFIRQ
+ lbra VIRQ
+ lbra VSWI
+ lbra VNMI
+* Code ends at VecEnd
 
  else
  ifeq CPUType-Cms9619
@@ -3597,7 +4113,10 @@ SYSVEC fdb SWI3HN+$FFE2-* Swi3 handler
  endc
  endc
 
- ifne (CPUType-Color)*(CPUType-Color3)
+ ifeq (CPUType-Color)*(CPUType-Color3)
+* VECEND must be $F00 (GIMERegs-LoadAdr)
+VECEND equ *
+ else
 ROMEnd equ *
  endc
 
