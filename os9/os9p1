@@ -668,17 +668,25 @@ LINK20 ldd MD$MPtr,X Get module ptr
  ldd MD$MBSiz,X Get memory block size
  addd #DAT.BlSz-1 Round up
  tfr A,B
- lsrb
- lsrb
- lsrb
- lsrb
  lsrb Block count
+ lsrb
+ lsrb
+ ifge (DAT.BlSz-$1000)
+ lsrb
+ ifge (DAT.BlSz-$2000)
+ lsrb
+ endc
+ endc
  adda #2 Two pages for workspace
  lsra
  lsra
  lsra
+ ifge (DAT.BlSz-$1000)
  lsra
+ ifge (DAT.BlSz-$2000)
  lsra
+ endc
+ endc
  pshs A Save block count
 
  leau ,Y Get DAT img ptr
@@ -847,11 +855,15 @@ M04CD puls U
  ldx <D.BlkMap
  ldd MD$MBSiz,U Get end ptr
  addd #DAT.BlSz-1 Round up
- lsra
- lsra
- lsra
- lsra
  lsra Get index into DAT img
+ lsra
+ lsra
+ ifge (DAT.BlSz-$1000)
+ lsra
+ ifge (DAT.BlSz-$2000)
+ lsra
+ endc
+ endc
  ldy MD$MPDAT,U Get DAT ptr
 M04DE pshs X,A
  ldd ,Y++ Get block map offset from DAT
@@ -899,11 +911,15 @@ M0524 pshs U,Y,X
  lbsr LDDDXY
  addd ,S Get module end ptr
  addd #DAT.BlSz-1 Round up
- lsra
- lsra
- lsra
- lsra
  lsra Get DAT index
+ lsra
+ lsra
+ ifge (DAT.BlSz-$1000)
+ lsra
+ ifge (DAT.BlSz-$2000)
+ lsra
+ endc
+ endc
  tfr A,B
  pshs B
  incb

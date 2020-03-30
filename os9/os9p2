@@ -1,11 +1,11 @@
 
- nam OS-9 Level I CoCo 1.00.00 kernal, part 2
+ nam OS-9 Level 2 CoCo 2.00.00 kernal, part 2
  ttl Module Header
 
 
 ************************************************************
 *                                                          *
-*        Microware OS-9 Level I V1.2 Kernal, part 2        *
+*        Microware OS-9 Level 2 V2.0 Kernal, part 2        *
 *                                                          *
 ************************************************************
 
@@ -26,8 +26,8 @@
 *
 *  Module Header
 *
-Type set SYSTM+OBJCT
-Revs set REENT+1
+Type set SYSTM
+Revs set REENT+2
  mod OS9End,OS9Nam,Type,Revs,OS9Ent,0
 OS9Nam fcs /OS9p2/
 
@@ -46,48 +46,9 @@ OS9Nam fcs /OS9p2/
 *
 * Edition  10 -  Backport to match CoCo OS9 distribution  CJB
 *
- fcb 10 Edition number
-
- ttl Service Routine initialization table
- page
-*****
+* Edition  17 -  Backport to match CoCo OS9 LII distribution  CJB
 *
-* System Service Routine Table
-*
-SVCTBL equ *
- fcb $7F
- fdb IOHOOK-*-2
- fcb F$Unlink
- fdb UNLINK-*-2
- fcb F$WAIT
- fdb WAIT-*-2
- fcb F$EXIT
- fdb EXIT-*-2
- fcb F$MEM
- fdb USRMEM-*-2
- fcb F$SEND
- fdb SEND-*-2
- fcb F$Sleep
- fdb SLEEP-*-2
- fcb F$ICPT
- fdb INTCPT-*-2
- fcb F$ID
- fdb GETID-*-2
- fcb F$SPrior
- fdb SETPRI-*-2
- fcb F$SSWI
- fdb SETSWI-*-2
- fcb F$STime
- fdb SetTime-*-2
- fcb F$Find64+$80
- fdb F64-*-2
- fcb F$ALL64+$80
- fdb A64-*-2
- fcb F$Ret64+$80
- fdb R64-*-2
- fcb $80
-
-
+ fcb 17 Edition number
 
  ttl Cold Start routine
  page
@@ -100,6 +61,169 @@ SVCTBL equ *
 *
 OS9Ent leay SVCTBL,PCR Get ptr to service routine table
  OS9 F$SSVC Set service table addresses
+ ldu D.Init Get configuration ptr
+ ldd MaxMem+0,U Get max free mem
+ lsra Convert to a block number
+ rorb
+ ifge (DAT.BlSz-$1000)
+ lsra
+ rorb
+ ifge (DAT.BlSz-$2000)
+ lsra
+ rorb
+ endc
+ endc
+M0024 rorb
+ lsra
+ rorb
+ lsra
+ addd D.BlkMap Index into block map
+ tfr D,X
+ ldb #NotRAM
+ bra M0036
+
+M0030 lda ,X+ In use?
+ bne M0036
+ stb -1,X Mark as not RAM
+M0036 cmpx D.BlkMap+2 At end?
+ bcs M0030 no; check next
+M003A ldu D.Init Get configuration ptr
+ ldd SYSSTR,U Get system device name
+ beq SETDIR10 Branch if none
+M0041 leax D,U Get name ptr
+ lda #EXEC.+READ. Set both execution & data
+ OS9 I$ChgDir Set default directory
+M0048 bcc M004F Branch if success
+M004A OS9 F$Boot
+ bcc M003A try again
+M004F ldu D.Init Get configuration ptr
+ ldd STDSTR,U open standard I/O
+M0054 beq M0077 Branch if none
+ leax D,U get name ptr
+M0058 lda #UPDAT. set mode
+M005A OS9 I$OPEN open file
+ bcc M0066 branch if success
+ OS9 F$Boot
+ bcc M004F try again
+ bra M009B
+
+M0066 ldx D.PROC get process ptr
+ sta P$PATH,X set standard input
+ OS9 I$DUP count open image
+ sta P$PATH+1,X set standard output
+ OS9 I$DUP count open image
+ sta P$PATH+2,X set standard error
+
+* Check for OS9p3
+M0077 leax P3Nam,PCR Get name ptr
+ lda #SYSTM+0
+ OS9 F$Link
+M007F bcs M0083 skip if not found
+ jsr ,Y Call OS9p3 entry
+M0083 ldu D.Init Get configuration ptr
+ ldd InitStr,U Get initial execution string
+ leax D,U Get string ptr
+ lda #OBJCT set type
+ clrb use declared memory
+ ldy #0 No parameters
+ OS9 F$Fork Start process
+ OS9 F$NProc Transfer to next process
+ 
+* Was Z0096
+P3Nam fcs "OS9p3"
+
+M009B fcb $0E,$6B ???
+
+ ttl Service Routine initialization table
+ page
+*****
+*
+* System Service Routine Table
+*
+SVCTBL equ *
+* fcb $7F
+* fdb IOHOOK-*-2
+ fcb F$Unlink
+ fdb UNLINK-*-2
+ fcb F$Fork
+ fdb FORK-*-2
+ fcb F$WAIT
+ fdb WAIT-*-2
+ fcb F$CHAIN
+ fdb WAIT-*-2
+ fcb F$EXIT
+ fdb EXIT-*-2
+ fcb F$MEM
+ fdb USRMEM-*-2
+ fcb F$SEND
+ fdb SEND-*-2
+ fcb F$ICPT
+ fdb INTCPT-*-2
+ fcb F$Sleep
+ fdb SLEEP-*-2
+ fcb F$SPrior
+ fdb SETPRI-*-2
+ fcb F$ID
+ fdb GETID-*-2
+ fcb F$SSWI
+ fdb SETSWI-*-2
+M00C1 fcb F$STime
+ fdb SetTime-*-2
+ fcb F$SchBit
+ fdb SCHBIT-*-2
+ fcb SysState+F$SchBit
+ fdb SSCHBIT-*-2
+ fcb F$AllBit
+ fdb ALLBIT-*-2
+ fcb SysState+F$AllBit
+ fdb SALLBIT-*-2
+M00D0 fcb F$DelBit
+ fdb DELBIT-*-2
+ fcb SysState+F$DelBit
+ fdb SDELBIT-*-2
+ fcb F$GPrDsc
+ fdb GPRDSC-*-2
+ fcb F$GBlkMp
+ fdb GBLKMP-*-2
+ fcb F$GModDr
+ fdb GMODDR-*-2
+ fcb F$CpyMem
+ fdb CPYMEM-*-2
+ fcb F$User
+ fdb USER-*-2
+ fcb F$UnLoad                 ;00E5: 1D
+ fdb M0A03-*-2                ;00E6: 09 1B
+ fcb $af                      ;00E8: AF
+ fdb M0A50-*-2                ;00E9: 09 65
+ fcb $b0                      ;00EB: B0
+ fdb M0A73-*-2                ;00EC: 09 85
+ fcb $b1                      ;00EE: B1
+ fdb M0AF4-*-2                ;00EF: 0A 03
+ fcb $b7                      ;00F1: B7
+ fdb M0B24-*-2                ;00F2: 0A 30
+ fcb $bb                      ;00F4: BB
+ fdb M0B46-*-2                ;00F5: 0A 4F
+ fcb $cb                      ;00F7: CB
+ fdb M02DE-*-2                ;00F8: 01 E4
+ fcb $cc                      ;00FA: CC
+ fdb M0330-*-2                ;00FB: 02 33
+ fcb F$MapBlk                 ;00FD: 4F
+ fdb M0B74-*-2                ;00FE: 0A 74
+M0100 fcb F$ClrBlk
+ fdb CLRBLK
+
+ fcb $80
+
+
+* fcb F$Find64+$80
+* fdb F64-*-2
+* fcb F$ALL64+$80
+* fdb A64-*-2
+* fcb F$Ret64+$80
+* fdb R64-*-2
+
+
+
  ldx D.PrcDBT Get process ptr
  OS9 F$ALL64 Get a process
  bcs COLD
