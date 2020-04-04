@@ -339,7 +339,7 @@ UNLK21 ldb ,S Get block
  stx (P$Links-P$DATImg),Y
  bne M01D8
  ldd MD$MBSiz,U Get module block size
- bsr M0226
+ bsr ADR2BLK Get block count
  ldx #DAT.Free
 UNLK22 stx ,Y++ Mark as free
  deca Count down blocks
@@ -349,20 +349,59 @@ UNLK25 clrb CLEAR Carry
 UNLK30 leas 2,S Clean stack
  puls U,PC
 
-* cmpy D.BTLO Is it 'system' module?
-* bcc UNLK25 Branch if so
-* ldb M$TYPE,Y Get module type
+M01D5 ldx D.BlkMap
+ ldd [,U] Get ptr to 1st entry
+ lda D,X Get attrs
+ bmi M0225 Branch if not RAM (done)
+ ldx D.ModDir
+M01DF ldd [MD$MPDAT,X] Same memory?
+ cmpd ,U
+ bne M01EA Branch if not
+ ldd MD$Link,X In use?
+ bne M0225 Branch if in use
+M01EA leax MD$ESize,X Move to next entry
+ cmpx D.ModEnd End of directory?
+ bcs M01DF no; check next
+ ldx D.BlkMap
+ ldd MD$MBSiz,U Get module block size
+ bsr ADR2BLK
+ pshs Y
+ ldy MD$MPDAT,U Get DAT ptr
+M01F8 pshs X,A
+ ldd ,Y Get block map offset
+ clr ,Y+ Now unused
+ clr ,X+
+ leax D,X Get ptr to attr and block
+ ldb ,X Get attr
+ andb #$FF-ModBlock-RamInUse Mark NotInUse
+ stb ,X
+ puls X,A
+ deca Count down block
+ bne M01FB Branch if not enough
+ puls Y
+ ldx D.ModDir
+ ldd MD$MPDAT,U Get DAT ptr
+M0216 cmpd MD$MPDAT,X Same DAT?
+ bne M021F Branch if not
+ clr ,X Now unused
+ clr 1,X
+M021F leax MD$ESize,X Move to next entry
+ cmpx D.ModEnd End of directory?
+ bcs M0216 Branch if more
+M0225 rts
 
-* clra
-* clrb
-* std 0,X Clear directory entry
-* std 0,Y Destroy id code
-* ldd M$SIZE,Y Get module size
-* lbsr DIV256 Divide by 256, rounding up
-* exg D,Y Switch page count & beginning address
-* exg A,B Make address into page number
-* ldx D.FMBM Get bit map ptr
-* OS9 F$DelBit Deallocate memory blocki
+* Was Z0226
+ADR2BLK addd #DAT.BlSz-1 Round up
+ lsra Convert to logical block
+ lsra
+ lsra
+ ifge (DAT.BlSz-$1000)
+ lsra
+ ifge (DAT.BlSz-$2000)
+ lsra
+ endc
+ endc
+ rts
 
  page
 *****
@@ -371,6 +410,8 @@ UNLK30 leas 2,S Clean stack
 *
 * Creates New Child Process
 *
+
+* Was Z022F
 FORK ldx D.PrcDBT Get process block ptr
  OS9 F$ALL64 Get new process descriptor
  bcs PRCFUL Branch if none left
@@ -441,6 +482,8 @@ PRCFUL comb SET Carry
 *
 * Wait for Child Process to Exit
 *
+
+* Was Z02DE
 WAIT ldy D.PROC Get process ptr
  ldx D.PrcDBT Get process descriptor block ptr
  lda P$CID,Y Does process have children?
@@ -2158,6 +2201,27 @@ FLOB30 ldd 1,S Get beginning page number of largest
 FLOB35 std 9,S Return size
 FLOB40 leas 5,S Return scratch
  puls D,X,Y,U,PC
+
+ ifne 0
+*** CJB UNUSED CODE ***
+
+* cmpy D.BTLO Is it 'system' module?
+* bcc UNLK25 Branch if so
+* ldb M$TYPE,Y Get module type
+
+* clra
+* clrb
+* std 0,X Clear directory entry
+* std 0,Y Destroy id code
+* ldd M$SIZE,Y Get module size
+* lbsr DIV256 Divide by 256, rounding up
+* exg D,Y Switch page count & beginning address
+* exg A,B Make address into page number
+* ldx D.FMBM Get bit map ptr
+* OS9 F$DelBit Deallocate memory blocki
+
+
+ endc
 
  page
  ifeq CPUType-Gimix
