@@ -65,10 +65,18 @@ OS9Ent leay SVCTBL,PCR Get ptr to service routine table
  ldd MaxMem+0,U Get max free mem
  lsra Convert to a block number
  rorb
-M0024 rorb
- lsra
+M0024 lsra
  rorb
  lsra
+ rorb
+ ifge (DAT.BlSz-$1000)
+ lsra
+ rorb
+ ifge (DAT.BlSz-$2000)
+ lsra
+ rorb
+ endc
+ endc
  addd D.BlkMap Index into block map
  tfr D,X
  ldb #NotRAM
@@ -81,7 +89,7 @@ M0036 cmpx D.BlkMap+2 At end?
  bcs M0030 no; check next
 M003A ldu D.Init Get configuration ptr
  ldd SYSSTR,U Get system device name
- beq SETDIR10 Branch if none
+ beq M004F Branch if none
 M0041 leax D,U Get name ptr
  lda #EXEC.+READ. Set both execution & data
  OS9 I$ChgDir Set default directory
@@ -107,7 +115,7 @@ M0066 ldx D.PROC get process ptr
  sta P$PATH+2,X set standard error
 
 * Check for OS9p3
-M0077 leax P3Nam,PCR Get name ptr
+M0077 leax <P3Nam,PCR Get name ptr
  lda #SYSTM+0
  OS9 F$Link
 M007F bcs M0083 skip if not found
@@ -124,7 +132,7 @@ M0083 ldu D.Init Get configuration ptr
 * Was Z0096
 P3Nam fcs "OS9p3"
 
-M009B fcb $0E,$6B ???
+M009B jmp <D.Crash Irrecoverable error
 
  ttl Service Routine initialization table
  page
@@ -133,8 +141,6 @@ M009B fcb $0E,$6B ???
 * System Service Routine Table
 *
 SVCTBL equ *
-* fcb $7F
-* fdb IOHOOK-*-2
  fcb F$Unlink
  fdb UNLINK-*-2 M0139
  fcb F$Fork
@@ -183,23 +189,23 @@ M00D0 fcb F$DelBit
  fdb CPYMEM-*-2 M09A8
  fcb F$User
  fdb USER-*-2 M09A0
- fcb F$UnLoad                 ;00E5: 1D
+ fcb F$UnLoad
  fdb M0A03-*-2                ;00E6: 09 1B
- fcb $af                      ;00E8: AF
+ fcb SysState+F$Find64
  fdb M0A50-*-2                ;00E9: 09 65
- fcb $b0                      ;00EB: B0
+ fcb SysState+F$All64
  fdb M0A73-*-2                ;00EC: 09 85
- fcb $b1                      ;00EE: B1
+ fcb SysState+F$Ret64
  fdb M0AF4-*-2                ;00EF: 0A 03
- fcb $b7                      ;00F1: B7
+ fcb SysState+F$GProcP
  fdb M0B24-*-2                ;00F2: 0A 30
- fcb $bb                      ;00F4: BB
+ fcb SysState+F$DelImg
  fdb M0B46-*-2                ;00F5: 0A 4F
- fcb $cb                      ;00F7: CB
- fdb M02DE-*-2                ;00F8: 01 E4
- fcb $cc                      ;00FA: CC
+ fcb SysState+F$AllPrc
+ fdb ALLPRC-*-2               ;00F8: 01 E4
+ fcb SysState+F$DelPrc
  fdb M0330-*-2                ;00FB: 02 33
- fcb F$MapBlk                 ;00FD: 4F
+ fcb F$MapBlk
  fdb M0B74-*-2                ;00FE: 0A 74
 M0100 fcb F$ClrBlk
  fdb CLRBLK M0BAE
@@ -221,7 +227,9 @@ M0100 fcb F$ClrBlk
 *
 * Input: Y - Service Dispatch Table ptr
 *
-IOSTR fcb 'I,'O,'M,'A,'N+$80
+
+* Was Z0112
+IOSTR fcb 'I,'O,'M,'a,'n+$80
 IOHOOK pshs D,X,Y,U Save registers
  bsr IOLink Link ioman
  bcc IOHOOK10
@@ -231,7 +239,7 @@ IOHOOK pshs D,X,Y,U Save registers
  bcs IOHOOK20
 IOHOOK10 jsr 0,Y Call ioman init
  puls D,X,Y,U Retrieve registers
- ldx -2,Y Get ioman entry
+ ldx >($100-2),Y Get secondary ioman entry
  jmp 0,X
 IOHOOK20 stb 1,S Return error
  puls D,X,Y,U,PC
@@ -273,7 +281,7 @@ UNLINK pshs U,D
  ldu D.BlkMap Get block map ptr
  ldb D,U Get attrs
  bitb #ModBlock Marked as having module?
- beq M0183
+ beq UNLK25_
  leau (P$Links-P$DATImg),Y Get links ptr
  bra UNLK7
 * Unlink this and linked modules
@@ -283,6 +291,7 @@ UNLK7 ldb ,S Get block
  aslb Convert to offset
  ldd B,U Get link ptr
  beq UNLK5 Skip if empty
+ lda ,S Get block
  asla Convert to block base ptr
  asla
  asla
@@ -315,11 +324,12 @@ UNLK10 cmpx MD$MPtr,U Is it this module?
  beq UNLK16 Branch if not used
  leax -1,X DOWN Link count
  stx MD$Link,U
- bne UNLK25 Branch if still used
+ bne UNLK21 Branch if still used
 
+* Was Z0198
 UNLK16 ldx 2,S Get ptr to regs
  ldx R$U,X Get ptr to module
- ldd M$Type,X Get module type
+ ldd #M$Type Get module type offset
  OS9 F$LDDDXY
  cmpa #FLMGR Is i/o module?
  bcs UNLK20 Branch if not
@@ -337,7 +347,7 @@ UNLK21 ldb ,S Get block
  ldx (P$Links-P$DATImg),Y DOWN links
  leax -1,X
  stx (P$Links-P$DATImg),Y
- bne M01D8
+ bne UNLK25
  ldd MD$MBSiz,U Get module block size
  bsr ADR2BLK Get block count
  ldx #DAT.Free
@@ -355,7 +365,7 @@ M01D5 ldx D.BlkMap
  bmi M0225 Branch if not RAM (done)
  ldx D.ModDir
 M01DF ldd [MD$MPDAT,X] Same memory?
- cmpd ,U
+ cmpd [,U]
  bne M01EA Branch if not
  ldd MD$Link,X In use?
  bne M0225 Branch if in use
@@ -367,10 +377,10 @@ M01EA leax MD$ESize,X Move to next entry
  bsr ADR2BLK
  pshs Y
  ldy MD$MPDAT,U Get DAT ptr
-M01F8 pshs X,A
+M01FB pshs X,A
  ldd ,Y Get block map offset
  clr ,Y+ Now unused
- clr ,X+
+ clr ,Y+
  leax D,X Get ptr to attr and block
  ldb ,X Get attr
  andb #$FF-ModBlock-RamInUse Mark NotInUse
@@ -412,67 +422,148 @@ ADR2BLK addd #DAT.BlSz-1 Round up
 *
 
 * Was Z022F
-FORK ldx D.PrcDBT Get process block ptr
- OS9 F$ALL64 Get new process descriptor
- bcs PRCFUL Branch if none left
+FORK pshs U
+ lbsr ALLPRC1 Allocated a process?
+ bcc FORK1 yes; continue
+ puls PC,U
+
+FORK1 pshs U
  ldx D.PROC Get parent process ptr
- pshs X Save parent process ptr
  ldd P$USER,X Copy user index
- std P$USER,Y
+ std P$USER,U
  lda P$Prior,X Copy priority
- clrb CLEAR Age
- std P$Prior,Y
- ldb #SysState Get system state flag
- stb P$State,Y Set infant state
- sty D.PROC Make child current process
- ldd P$NIO+0,X network hooks
- std P$NIO+0,Y
- ldd P$NIO+2,X
- std P$NIO+2,Y
+ sta P$Prior,U
+
+ pshs U,X Save child and parent process
+ leax P$NIO,X Copy network hooks
+ leau P$NIO,U
+ ldb #6*2
+FORK2 lda ,X+
+ sta ,U+
+ decb
+ bne FORK2
+ puls X,U Get parent and child process
 *
 * Pass I/O Defaults & Paths 0, 1, And 2
 *    From Parent To Child
 *
  leax P$DIO,X Get parent path ptr
- leay P$DIO,Y Get child path ptr
+ leau P$DIO,U Get child path ptr
  ldb #DefIOSiz Get byte count
 FORK10 lda ,X+ Get parent byte
- sta ,Y+ Pass to child
+ sta ,U+ Pass to child
  decb COUNT Down
  bne FORK10 Branch if more
- ldb #3 Get number of paths
+ ldy #3 Get number of paths
 FORK20 lda ,X+ Get path number
+ beq FORK25 Skip if none
  OS9 I$DUP Duplicate path
  bcc FORK25
  clra CLEAR Path number
-FORK25 sta ,Y+ Pass path to child
- decb COUNT Down
+FORK25 sta ,U+ Pass path to child
+ leay -1,Y COUNT Down
  bne FORK20 Branch if more
- bsr SETPRC Set up process
- bcs FORK40 Branch if error
- puls Y Retrieve parent process ptr
- sty D.PROC Make parent current process
+
+ ldx ,S Get parent process -- BUG?
+ ldu 2,S Get child process -- BUG?
+ lbsr M04B1 ; SETPRC?
+ bcs FORK40
+ pshs D
+ OS9 F$AllTsk
+ bcs FORK40
+ lda P$PagCnt,X Get memory page count
+ clrb Convert to memory size
+ subd ,S Less old memory size
+ tfr D,U
+ ldb P$Task,X Child DAT task number
+ ldx <D.Proc Parent process
+ lda P$Task,X Parent DAT task number
+ leax ,Y
+ puls Y
+ OS9 F$Move Copy DAT pages
+ ldx ,S
+ lda <D.SysTsk Get system task number
+ ldu P$SP,X Copy rest of register stack
+ leax (P$Stack-12),X
+ ldy #12 Size of stack frame
+ OS9 F$Move
+ puls X,U
+ OS9 F$DelTsk
+ ldy <D.Proc Retrieve parent process pztr
  lda P$ID,X Get child id
  sta R$A,U Return to parent
  ldb P$CID,Y Get youngest child id
  sta P$CID,Y Set new child
  lda P$ID,Y Get parent id
  std P$PID,X Set parent & sibling ids
- ldb P$State,X Get child state
- andb #$FF-SysState Clear system state
- stb P$State,X Update child state
+ lda P$State,X Get child state
+ anda #$FF-SysState Clear system state
+ sta P$State,X Update child state
  OS9 F$AProc Activate child process
  rts
-FORK40 pshs B Save error code
- OS9 F$EXIT Terminate child
+FORK40 puls X
+ pshs B Save error code
+ lbsr M05A5
+ lda ,X
+ lbsr M0386
  comb SET Carry
- puls B,X Retrieve error code & parent process ptr
- stx D.PROC Make parent current process
- rts
+ puls B,U,PC Retrieve error code & parent process ptr and exit
 
-PRCFUL comb SET Carry
+
+
+ page
+*****
+*
+*  Subroutine AllPrc
+*
+* Allocate Process Descriptor
+*
+
+* Was Z02DE
+ALLPRC pshs U
+ bsr ALLPRC1
+ bcs ALLPRCX
+ ldx ,S Get reg ptr
+ stu R$U,X Return process descriptor pointer
+ALLPRCX puls U,PC
+
+ALLPRC1 ldx D.PrcDBT Get process descriptor block table
+ALLPRC2 lda ,X+ Available process?
+ bne ALLPRC2 no; continue
+ leax -1,X
+ tfr X,D
+ subd D.PrcDBT Get process id
+ tsta Valid process id?
+ beq ALLPRC10 yes; continue
+ comb SET Carry
  ldb #E$PrcFul Err: process table full
- rts
+ bra ALLPRC30
+
+ALLPRC10 pshs B Save process id
+ ldd #$200 Memory size
+ OS9 F$SRqMem
+ puls A Get process id
+ bcs ALLPRC30
+
+ sta P$ID,U Set process id
+ tfr U,D
+ sta ,X Set starting page of process
+ clra
+ leax P$PID,U
+ ldy #$100/2
+ALLPRC20 std ,X++ Zero the process descriptor
+ leay -1,Y
+ bne ALLPRC20
+ lda #SysState Process is in System State
+ sta P$State,U
+ ldb #DAT.BlCt Number of blocks in a DAT image
+ ldx #DAT.Free Sentinel for empty DAT slot
+ leay P$DATImg,U Initialize empty DAT image
+ALLPRC25 stx ,Y++
+ decb
+ bne ALLPRC25
+ clrb CLEAR Carry
+ALLPRC30 rts
 
 
  page
@@ -598,6 +689,9 @@ CHAIN pshs U Save register ptr
 * fdb R64-*-2
 
 
+ ldx D.PrcDBT Get process block ptr
+ OS9 F$ALL64 Get new process descriptor
+ bcs PRCFUL Branch if none left
 
  ldx D.PrcDBT Get process ptr
  OS9 F$ALL64 Get a process
