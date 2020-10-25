@@ -142,13 +142,13 @@ M009B jmp <D.Crash Irrecoverable error
 *
 SVCTBL equ *
  fcb F$Unlink
- fdb UNLINK-*-2 M0139
+ fdb UNLINK-*-2
  fcb F$Fork
- fdb FORK-*-2 M022F
+ fdb FORK-*-2
  fcb F$WAIT
- fdb WAIT-*-2 M0334
+ fdb WAIT-*-2
  fcb F$CHAIN
- fdb WAIT-*-2 M03AE
+ fdb USRCHN-*-2
  fcb F$EXIT
  fdb EXIT-*-2 M0544
  fcb F$MEM
@@ -202,9 +202,9 @@ M00D0 fcb F$DelBit
  fcb SysState+F$DelImg
  fdb M0B46-*-2                ;00F5: 0A 4F
  fcb SysState+F$AllPrc
- fdb ALLPRC-*-2               ;00F8: 01 E4
+ fdb ALLPRC-*-2
  fcb SysState+F$DelPrc
- fdb M0330-*-2                ;00FB: 02 33
+ fdb DELPRC-*-2
  fcb F$MapBlk
  fdb M0B74-*-2                ;00FE: 0A 74
 M0100 fcb F$ClrBlk
@@ -466,7 +466,7 @@ FORK25 sta ,U+ Pass path to child
 
  ldx ,S Get parent process -- BUG?
  ldu 2,S Get child process -- BUG?
- lbsr M04B1 ; SETPRC?
+ lbsr SETPRC Set up process
  bcs FORK40
  pshs D
  OS9 F$AllTsk
@@ -484,7 +484,7 @@ FORK25 sta ,U+ Pass path to child
  ldx ,S
  lda <D.SysTsk Get system task number
  ldu P$SP,X Copy rest of register stack
- leax (P$Stack-12),X
+ leax (P$Stack-R$SIZE),X
  ldy #12 Size of stack frame
  OS9 F$Move
  puls X,U
@@ -503,12 +503,11 @@ FORK25 sta ,U+ Pass path to child
  rts
 FORK40 puls X
  pshs B Save error code
- lbsr M05A5
- lda ,X
- lbsr M0386
+ lbsr M05A5 Close paths, unlink, return DAT image
+ lda P$ID,X Get the process ID
+ lbsr DLPRC Delete the process
  comb SET Carry
  puls B,U,PC Retrieve error code & parent process ptr and exit
-
 
 
  page
@@ -527,7 +526,8 @@ ALLPRC pshs U
  stu R$U,X Return process descriptor pointer
 ALLPRCX puls U,PC
 
-ALLPRC1 ldx D.PrcDBT Get process descriptor block table
+* Was Z02EA
+ALLPRC1 ldx D.PrcDBT Get process descriptor block ptr
 ALLPRC2 lda ,X+ Available process?
  bne ALLPRC2 no; continue
  leax -1,X
@@ -550,7 +550,7 @@ ALLPRC10 pshs B Save process id
  sta ,X Set starting page of process
  clra
  leax P$PID,U
- ldy #$100/2
+ ldy #$100/2 Words to zero
 ALLPRC20 std ,X++ Zero the process descriptor
  leay -1,Y
  bne ALLPRC20
@@ -569,36 +569,56 @@ ALLPRC30 rts
  page
 *****
 *
+*  Subroutine DelPrc
+*
+* Deallocate Process Descriptor
+*
+
+* Was Z0330
+DELPRC lda R$A,U Get process id
+ bra DLPRC Delete the process
+
+
+ page
+*****
+*
 *  Subroutine Wait
 *
 * Wait for Child Process to Exit
 *
 
-* Was Z02DE
-WAIT ldy D.PROC Get process ptr
- ldx D.PrcDBT Get process descriptor block ptr
- lda P$CID,Y Does process have children?
- bne WAIT10 Branch if so
- comb Set Carry
- ldb #E$NoChld Err: no children
- rts
-WAIT10 OS9 F$Find64 Get process ptr
+* Was Z0334
+WAIT ldx D.PROC Get process ptr
+ lda P$CID,X Does process have children?
+ beq WAIT30 Branch if not
+WAIT10 lbsr M0B2E Get process ptr
  lda P$State,Y Get child's status
  bita #DEAD Is child dead?
- bne WAIT20 Branch if so
+ bne CHILDS Branch if so
  lda P$SID,Y More children?
  bne WAIT10 Branch if so
- clr R$A,U clear child process id
- ldx D.PROC Get process ptr
+* No dead children
+ sta R$A,U Set child process id
+ sta R$B,U Set child exit status code
+ pshs CC
  orcc #IRQMask+FIRQMask Set interrupt masks
- ldd D.WProcQ Put in waiting queue
+ lda P$Signal,X Is a signal waiting?
+ beq WAIT20 Branch if not
+ deca Wake-up Signal?
+ bne WAIT15 no; continue
+ sta P$Signal,X Clear signal
+WAIT15 lbra M071B
+WAIT20 ldd D.WProcQ Put in waiting queue
  std P$Queue,X
  stx D.WProcQ
+ puls CC
  lbra ZZZPRC Put process to sleep
-WAIT20 ldx D.PROC Get parent process ptr
-*
-*           Fall Thru to Childs
-*
+
+WAIT30 comb Set Carry
+ ldb #E$NoChld Err: no children
+ rts
+
+
 *****
 *
 *  Subroutine Childs
@@ -609,23 +629,44 @@ WAIT20 ldx D.PROC Get parent process ptr
 *         Y - Child Process ptr
 *         U - Parent Process Register ptr
 *
+* Was Z036C
 CHILDS lda P$ID,Y Get process id
  ldb P$Signal,Y Get death status
  std R$D,U Return to parent
- pshs A,X,Y,U Save registers
+ leau ,Y Copy child process ptr
  leay P$CID-P$SID,X Fake sibling process ptr
- ldx D.PrcDBT Get process descriptor block ptr
  bra CHIL20
-CHIL10 OS9 F$Find64 Get process ptr
+CHIL10 lbsr M0B2E Get process ptr
 CHIL20 lda P$SID,Y Is child next sibling?
- cmpa 0,S
+ cmpa P$ID,U
  bne CHIL10 Branch if not
- ldu 3,S Get process ptr
  ldb P$SID,U Get child's sibling
  stb P$SID,Y Remove child from sibling list
- OS9 F$Ret64 Return process descriptor
- puls A,X,Y,U,PC
 
+*
+* Fall through to delete the process
+*
+
+* Delete the process in A
+* Was Z0386
+DLPRC pshs D,X,U Save registers
+ cmpa >CC3.015 F$Alarm process id?
+ bne DLPRC10 no; continue
+ clr >CC3.015 Clear F$Alarm process id
+ clr >CC3.016 Clear F$Alarm signal code
+DLPRC10 ldb ,S Get sibling id
+ ldx D.PrcDBT Get process descriptor block ptr
+ abx Index into table
+ lda ,X Get upper half of sibling process address
+ beq DLPRC20
+ clrb
+ stb ,X Free the process
+ tfr D,X Get dead process ptr
+ OS9 F$DelTsk Free the DAT
+ leau ,X Get dead process ptr
+ ldd #$200 Process size
+ OS9 F$SrtMem Free the process memory
+DLPRC20 puls D,X,U,PC
 
 
 *****
@@ -634,116 +675,222 @@ CHIL20 lda P$SID,Y Is child next sibling?
 *
 * User Chain Routine
 *
-USRCHN bsr CHAIN Do chain
- bcs BADCHN Branch if error
- orcc #IRQMask+FIRQMask Set interrupt masks
- ldb P$State,X Clear system state
- andb #$FF-SysState
- stb P$State,X
-USRC10 OS9 F$AProc Put process in active queue
- OS9 F$NProc Start next process
 
+* Was Z03AE
+USRCHN pshs U Save reg ptr
+ lbsr ALLPRC1 Allocated a process?
+ bcc CHAIN yes; continue
+ puls PC,U
 
-
-*****
-*
-*  Subroutine Syschn
-*
-* System Chain Routine
-*
-SYSCHN bsr CHAIN Do chain
- bcc USRC10 Branch if no error
-BADCHN pshs B Save error code
- stb P$Signal,X Set error status
- ldb P$State,X Get process status
- orb #CONDEM Condem process
- stb P$State,X
- ldb #$FF Set high priority
- stb P$Prior,X
- comb
- puls B,PC
-
-
-
-*****
-*
-* Subroutine Chain
-*
-* Execute Overlay
-*
-CHAIN pshs U Save register ptr
- ldx D.PROC Get process ptr
+CHAIN ldx D.PROC Get process ptr
+ pshs U,X Save new and current process ptr
+ leax P$SP,X Get current SP
+ leau P$SP,U Get new SP
+ ldy #($100-P$SP)/2 Words to copy
+CHAIN10 ldd ,X++
+ std ,U++
+ leay -1,Y More to copy?
+ bne CHAIN10 yes; continue
+ ldu 2,S Get new process ptr
+ leau P$DATImg,U Get DAT img ptr
+ ldx ,S Get old process ptr
+ lda P$Task,X Old DAT task number
+ asla Block offset to DAT img offset
+ ldx D.TskIPt Get Task Image Pointer Table base
+ stu A,X Set DAT img ptr
+ ldx D.Proc Get current process ptr
+ clra
+ clrb
+ stb P$Task,X Free current process DAT task
+ std P$SWI,X Reset swi vector
+ std P$SWI2,X Reset swi2 vector
+ std P$SWI3,X Reset swi3 vector
+ sta P$Signal,X Clear signal
+ std P$SigVec,X Clear signal vector ptr
  ldu P$PModul,X Get primary module ptr
  OS9 F$Unlink
- ldu 0,S Retrieve register ptr
- bsr SETPRC Set up process
- puls U,PC Clean stack
+ ldb P$PagCnt,X Get memory page count
+ addb #(DAT.BlSz/256)-1 Round to whole DAT block
+ lsrb Convert to block offset
+ lsrb
+ lsrb
+ ifge (DAT.BlSz-$1000)
+ lsrb
+ ifge (DAT.BlSz-$2000)
+ lsrb
+ endc
+ endc
+ lda #DAT.BlCt Number of blocks in a DAT image
+ pshs B
+ suba ,S+ DAT image entries to clear
+ leay P$DATImg,X Get current process DAT image ptr
+ aslb Block offset to DAT img offset
+ leay B,Y Get block map offset
+ ldu #DAT.Free Sentinel for empty DAT slot
+CHAIN20 stu ,Y++ Mark as free
+ deca Count down blocks
+ bne CHAIN20 Branch if not enough
+ ldu 2,S Get new process ptr
+ stu D.Proc Set current process
+ ldu 4,S Retrieve register ptr
+ lbsr SETPRC Set up process
+ lbcs M04A1 no? Exit this process
+ pshs D
+ OS9 F$AllTsk Allocate a DAT task in process
+ bcc CHAIN30 branch if got it
+* POSSIBLE BUG? Return error here?
 
+* Was Z0425
+CHAIN30 ldu <D.Proc Get current process
+ lda P$Task,U DAT task of current process
+ ldb P$Task,X DAT task of former process
+ leau (P$Stack-R$SIZE),X Stack frame of former proces
+ leax ,Y FIXME MAGIC
+ ldu R$X,U Get module name ptr
+ pshs U
+ cmpx ,S++
+ puls Y Get old process pointer
+ bhi M0471 Branch if processed the module name
+ beq M0474 Branch if at start of module name
+ leay ,Y Any old process
+ beq M0474 no; skip
+ pshs X,D
+ tfr Y,D
+ leax D,X
+ pshs U
+ cmpx ,S++
+ puls D,X
+ bls M0471
+ pshs U,Y,X,D
+ tfr Y,D
+ leax D,X
+ leau D,U
+CHAIN40 ldb ,S DAT task of current process
+ leax -1,X
+ OS9 F$LDABX Get byte
+ exg X,U
+ ldb 1,S DAT task of new process
+ leax -1,X
+ OS9 F$STABX Copy byte to new process
+ exg X,U
+ leay -1,Y
+ bne CHAIN40
+ puls D,X,Y,U
+ bra M0474
 
+M0471 OS9 F$Move
+M0474 lda D.SysTsk
+ ldx ,S Get new process ptr
+ ldu P$SP,X
+ leax (P$Stack-R$SIZE),X Stack frame of former proces
+ ldy #R$SIZE
+ OS9 F$Move Copy registers to new process
+ puls X,U Get new and old process ptrs
+ lda P$ID,U
+ lbsr DLPRC Delete old process
+ OS9 F$DelTsk Deallocate DAT task of old process
+ orcc #IRQMask+FIRQMask Set interrupt masks
+ ldd D.SysPrc Get system process
+ std D.Proc Escalate privilege
+ lda P$State,X Clear system state
+ anda #$FF-SysState
+ sta P$State,X
+ OS9 F$AProc Put process in active queue
+ OS9 F$NProc Start next process
 
-* fcb F$Find64+$80
-* fdb F64-*-2
-* fcb F$ALL64+$80
-* fdb A64-*-2
-* fcb F$Ret64+$80
-* fdb R64-*-2
+M04A1 puls X,U
+ stx D.Proc
+ pshs B
+ lda P$ID,U
+ lbsr DLPRC Delete old process
+ puls B
+ OS9 F$Exit Terminate process
 
+ page
+*****
+*
+*  Subroutine Setprc
+*
+* Set Up Process Descriptor
+*
+* Was Z04B1
+SETPRC pshs U,Y,X,D
+ ldd D.PROC Get process ptr
+ pshs D
+ stx D.PROC
+ lda R$A,U Get type
+ ldx R$X,U Get name ptr
+ ldy ,S Get old process
+ leay D.BlkMap,Y Get name DAT img ptr
+ OS9 F$SLINK
+ bcc SETP10 Branch if found
+ ldd ,S Get process ptr
+ std D.PROC Restore it
+ ldu 4,S
+ OS9 F$LOAD Try loading it
+ bcc SETP10 Branch if loaded
+ leas 4,S Clean stack
+ puls X,Y,U,PC Return error
 
- ldx D.PrcDBT Get process block ptr
- OS9 F$ALL64 Get new process descriptor
- bcs PRCFUL Branch if none left
+* Was Z04D7
+SETP10 stu 2,S Save module ptr
+ pshs Y,A
+ ldu 11,S Get register ptr
+ stx R$X,U Return updated ptr
+ ldx 7,S Get process ptr
+ stx D.PROC
+ ldd 5,S Get module pointer
+ std P$PModul,X Save primary module ptr
+ puls A Get type
+ cmpa #PRGRM+OBJCT is it program object?
+ beq SETP15 branch if so
+ cmpa #SYSTM+OBJCT is it system object?
+ beq SETP15 branch if so
 
- ldx D.PrcDBT Get process ptr
- OS9 F$ALL64 Get a process
- bcs COLD
- stx D.PrcDBT Set process block
- sty D.PROC
- tfr S,D copy stack ptr
- deca get page lower bound
- ldb #1 set page count
- std P$ADDR,Y set process descriptor
- lda #SysState Set system state
- sta P$State,Y
- ldu D.Init get configuration ptr
- bsr SETDIRS set default directories
- bcc COLD10 branch if successful
- lbsr BOOT Default failed, boot
- bsr SETDIRS try again
-COLD10 bsr SETSTDS open standard i/o
- bcc COLD20 branch if successful
- lbsr BOOT open failed, boot
- bsr SETSTDS try again
-COLD20 ldd InitStr,U Get initial execution string
- leax D,U Get string ptr
- lda #OBJCT set type
- clrb use declared memory
- ldy #0 No parameters
- OS9 F$Chain Start process
+ ldb #E$NEMod err: non-executable module
 
-COLD jmp [$FFFE] Abort start up
+SETP12 leas 2,S Clean stack
+ stb 3,S Save error code
+ comb set carry
+ bra SETP50
 
-SETDIRS clrb clear carry
- ldd SYSSTR,U Get system device name
- beq SETDIR10 Branch if none
- leax D,U Get name ptr
- lda #EXEC.+READ. Set both execution & data
- OS9 I$ChgDir Set default directory
-SETDIR10 rts
+* Was Z04FB
+SETP15 ldd #M$Mem Module offset to memory rqmt
+ leay D.BlkMap,X Get DAT img ptr
+ ldx P$PModul,X Get module ptr
+ OS9 F$LDDDXY Get memory required
+ cmpa R$B,U Is memory over-ride smaller?
+ bcc SETP25 yes; continue
+ lda R$B,U Use memory over-ride
+ clrb
+SETP25 OS9 F$MEM Mem to correct size
+ bcs SETP12 Branch if no memory
+ ldx 6,S Get process ptr
+ leay (P$Stack-R$SIZE),X Get stack frame ptr
+ pshs D Save actual size (end ptr)
+ subd R$Y,U Deduct parameter count
+ std R$X,Y
+ subd #R$SIZE Deduct stack room
+ std P$SP,X Set stack ptr
+ ldd R$Y,U Get parameter count
+ std R$D,Y Pass to process
+ std 6,S
+ puls D,X Get end ptr and module entry
+ std R$Y,Y Set end ptr
+ ldd R$U,U Get parameter beginning
+ std 6,S
+ lda #ENTIRE Set cc entire bit
+ sta R$CC,Y
+ clra
+ sta R$DP,Y Set direct page ptr
+ clrb
+ std R$U,Y Set beginning address
+ stx R$PC,Y Set new program counter
 
-SETSTDS clrb clear carry
- ldd STDSTR,U get name offset
- leax D,U get name ptr
- lda #UPDAT. set mode
- OS9 I$OPEN open file
- bcs SETSTD10 branch if error
- ldx D.PROC get process ptr
- sta P$PATH,X set standard input
- OS9 I$DUP count open image
- sta P$PATH+1,X set standard output
- OS9 I$DUP count open image
- sta P$PATH+2,X set standard error
-SETSTD10 rts
-
+* Was Z053E
+SETP50 puls D Get new process pointer
+ std D.PROC Set it
+ puls D,X,Y,U,PC
 
  page
 *****
@@ -752,65 +899,103 @@ SETSTD10 rts
 *
 * Process Termination
 *
+
+* Was Z0544
 EXIT ldx D.PROC Get process ptr
+ bsr M05A5 Close paths, unlink, return DAT image
  ldb R$B,U Get exit status
  stb P$Signal,X Save status
+ leay P$PID,X Get parent process id
+ bra EXIT25
+
+* Was Z0551
+EXIT20 clr P$SID,Y Clear sibling link
+ lbsr M0B2E Get next process ptr
+ clr P$PID,Y Clear parent link
+ lda P$State,Y Get process status
+ bita #DEAD Is process dead?
+ beq EXIT25 Branch if not
+
+ lda P$ID,Y Return process to free
+ lbsr DLPRC Return process descriptor
+
+* Was Z0563
+EXIT25 lda P$SID,Y Get sibling id
+ bne EXIT20 Branch if there is one
+ leay ,X Get process ptr
+ ldx #(D.WProcQ-P$Queue) Fake process; P$Queue,X will be D.WProcQ
+ lds D.SysStk Use system stack
+ pshs CC
+ orcc #IRQMask+FIRQMask Set interrupt masks
+ lda P$PID,Y Any parent?
+ bne EXIT40 Branch if parent alive
+ puls CC
+ lda P$ID,Y Get process id
+ lbsr DELPRC Delete process
+ bra M05A2
+
+EXIT35 cmpa P$ID,X Is this parent?
+ beq EXIT45
+
+* Find parent process
+* Was Z0584
+EXIT40 leau 0,X Copy this process ptr
+ ldx P$Queue,X Get next process ptr
+ bne EXIT35 Branch if there is one
+ puls CC
+ lda #SYSSTATE+DEAD Note process death
+ sta P$State,Y Update status
+ bra M05A2 Activate next process
+
+* Was Z0592
+EXIT45 ldd P$Queue,X Remove parent from wait list
+ std P$Queue,U
+ puls CC
+ ldu P$SP,X Get process stack
+ ldu R$U,U
+ lbsr CHILDS Return child status
+ OS9 F$AProc Put parent in active process queue
+M05A2 OS9 F$NProc Start next process
+
+**********
+*
+* Close paths, unlink and return DAT image
+*
+M05A5 pshs U
  ldb #NumPaths Get number of paths
  leay P$PATH,X Get path table ptr
 EXIT10 lda ,Y+ Get next path number
  beq EXIT15 Branch if not in use
+ clr -1,Y Clear the path
  pshs B Save path count
  OS9 I$Close Close the file
  puls B Retrieve path count
 EXIT15 decb COUNT Down
  bne EXIT10 Branch if more
- lda P$ADDR,X Get memory page number
- tfr D,U Copy it
- lda P$PagCnt,X
- OS9 F$SRtMem
+ clra
+ ldb P$PagCnt,X Get memory page count
+ beq M05CB
+ addb #(DAT.BlSz/256)-1 Round to whole DAT block
+ lsrb Convert to block offset
+ lsrb
+ lsrb
+ ifge (DAT.BlSz-$1000)
+ lsrb
+ ifge (DAT.BlSz-$2000)
+ lsrb
+ endc
+ endc
+ OS9 F$DelImg Return memory from DAT image
+M05CB ldd D.PROC Get process ptr
+ pshs D
+ stx D.PROC Make us current
  ldu P$PModul,X Get primary module ptr
  OS9 F$Unlink Unlink it
- ldu D.PROC Get process ptr
- leay P$CID-P$SID,U Fake sibling process
- ldx D.PrcDBT Get process descriptor block
- bra EXIT30
-EXIT20 clr P$SID,Y Clear sibling link
- OS9 F$Find64 Get next process ptr
- lda P$State,Y Get process status
- bita #DEAD Is process dead?
- beq EXIT25 Branch if not
- lda P$ID,Y Return process to free
- OS9 F$Ret64 Return process descriptor
-EXIT25 clr P$PID,Y Clear parent process ptr
-EXIT30 lda P$SID,Y Get sibling id
- bne EXIT20 Branch if there is one
- ldx #D.WProcQ-P$Queue Fake process ptr
- lda P$PID,U Get parent process id
- bne EXIT40 Branch if parent alive
- ldx D.PrcDBT Get process block ptr
- lda P$ID,U Get process id
- OS9 F$Ret64 Return process descriptor
- bra EXIT50
-EXIT35 cmpa P$ID,X Is this parent?
- beq EXIT45 Branch if so
-EXIT40 leay 0,X Copy this process ptr
- ldx P$Queue,X Get next process ptr
- bne EXIT35 Branch if there is one
- lda P$State,U Get process status
- ora #DEAD Note process death
- sta P$State,U Update status
- bra EXIT50 Wait for parent to notice
-EXIT45 ldd P$Queue,X Remove parent from wait list
- std P$Queue,Y
- OS9 F$AProc Put parent in active process queue
- leay 0,U Copy child ptr
- ldu P$SP,X Get parent's stack
- ldu R$D,U Get actual wait stack
- lbsr CHILDS Return child status
-EXIT50 clra REMOVE Process from active system
- clrb
- std D.PROC
+ puls D,U Get process ptr and restore regs
+ std D.PROC Restore current process
+ OS9 F$DelTsk Delete DAT task
  rts
+
  page
 *****
 *
@@ -877,6 +1062,89 @@ USRM35 lda P$PagCnt,X Get process beginning address
 BADMEM comb SET Carry
  ldb #E$MemFul Err: memory full
  puls X,Y,U,PC
+
+*****
+*
+*  Subroutine Syschn
+*
+* System Chain Routine
+*
+SYSCHN bsr CHAIN Do chain
+ bcc USRC10 Branch if no error
+BADCHN pshs B Save error code
+ stb P$Signal,X Set error status
+ ldb P$State,X Get process status
+ orb #CONDEM Condem process
+ stb P$State,X
+ ldb #$FF Set high priority
+ stb P$Prior,X
+ comb
+ puls B,PC
+
+
+
+* fcb F$Find64+$80
+* fdb F64-*-2
+* fcb F$ALL64+$80
+* fdb A64-*-2
+* fcb F$Ret64+$80
+* fdb R64-*-2
+
+
+ ldx D.PrcDBT Get process block ptr
+ OS9 F$ALL64 Get new process descriptor
+ bcs PRCFUL Branch if none left
+
+ ldx D.PrcDBT Get process ptr
+ OS9 F$ALL64 Get a process
+ bcs COLD
+ stx D.PrcDBT Set process block
+ sty D.PROC
+ tfr S,D copy stack ptr
+ deca get page lower bound
+ ldb #1 set page count
+ std P$ADDR,Y set process descriptor
+ lda #SysState Set system state
+ sta P$State,Y
+ ldu D.Init get configuration ptr
+ bsr SETDIRS set default directories
+ bcc COLD10 branch if successful
+ lbsr BOOT Default failed, boot
+ bsr SETDIRS try again
+COLD10 bsr SETSTDS open standard i/o
+ bcc COLD20 branch if successful
+ lbsr BOOT open failed, boot
+ bsr SETSTDS try again
+COLD20 ldd InitStr,U Get initial execution string
+ leax D,U Get string ptr
+ lda #OBJCT set type
+ clrb use declared memory
+ ldy #0 No parameters
+ OS9 F$Chain Start process
+
+COLD jmp [$FFFE] Abort start up
+
+SETDIRS clrb clear carry
+ ldd SYSSTR,U Get system device name
+ beq SETDIR10 Branch if none
+ leax D,U Get name ptr
+ lda #EXEC.+READ. Set both execution & data
+ OS9 I$ChgDir Set default directory
+SETDIR10 rts
+
+SETSTDS clrb clear carry
+ ldd STDSTR,U get name offset
+ leax D,U get name ptr
+ lda #UPDAT. set mode
+ OS9 I$OPEN open file
+ bcs SETSTD10 branch if error
+ ldx D.PROC get process ptr
+ sta P$PATH,X set standard input
+ OS9 I$DUP count open image
+ sta P$PATH+1,X set standard output
+ OS9 I$DUP count open image
+ sta P$PATH+2,X set standard error
+SETSTD10 rts
 
 
 
@@ -1116,15 +1384,15 @@ INTCPT ldx D.PROC Get process ptr
 SETPRI lda R$A,U Get process id
  ldx D.PrcDBT Get process block ptr
  OS9 F$Find64 Find process descriptor
- bcs SETP10
+ bcs SETPR10
  ldx D.PROC Get setting process ptr
  ldd P$USER,X Get setting user
  cmpd P$USER,Y Same as set user?
- bne SETP10 Branch if not
+ bne SETPR10 Branch if not
  lda R$B,U Get priority
  sta P$Prior,Y Set priority
  rts
-SETP10 comb SET Carry
+SETPR10 comb SET Carry
  ldb #E$IPrcID Err: illegal process id
  rts
 
@@ -2040,84 +2308,9 @@ ZCRCC20 comb SET Carry
 ZCRCC30 puls X,Y,PC
 
 
-
- page
-*****
-*
-*  Subroutine Setprc
-*
-* Set Up Process Descriptor
-*
-SETPRC ldx D.PROC Get process ptr
- pshs X,U Save process & register ptr
- ldd D.UsrSVC Get user service request
- std P$SWI,X Reset swi vector
- std P$SWI2,X Reset swi2 vector
- std P$SWI3,X Reset swi3 vector
- clra
- clrb
- sta P$Signal,X Clear signal
- std P$SigVec,X Clear signal vector ptr
- lda R$A,U Get type
- ldx R$X,U Get name ptr
- OS9 F$LINK
- bcc SETP10 Branch if found
- OS9 F$LOAD Try loading it
- bcs SETP50 Branch if not loadable
-SETP10 ldy D.PROC Get process ptr
- stu P$PModul,Y Save primary module ptr
- cmpa #PRGRM+OBJCT is it program object?
- beq SETP15 branch if so
- cmpa #SYSTM+OBJCT is it system object?
- beq SETP15 branch if so
- comb set carry
- ldb #E$NEMod err: non-executable module
- bra SETP50
-SETP15 leay 0,U Copy module ptr
- ldu 2,S Get register ptr
- stx R$X,U Return updated ptr
- lda R$B,U Get memory over-ride
- clrb
- cmpd M$Mem,Y Is it big enough?
- bcc SETP20
- ldd M$Mem,Y Get memory required
-SETP20 addd #0 Req for zero data mem?
- bne SETP25 bra if not
-SETP25 OS9 F$MEM Mem to correct size
- bcs SETP50 Branch if no memory
- subd #R$SIZE Deduct stack room
- subd R$Y,U Deduct parameter count
- bcs BADPAR Branch if not available
- ldx R$U,U Get parameter beginning
- ldd R$Y,U Get parameter count
- pshs D Save parameter count
- beq SETP40 Branch if no parameters
- leax D,X Get parameter end ptr
-SETP30 lda ,-X Get parameter byte
- sta ,-Y Pass it
- cmpx R$U,U Done?
- bhi SETP30 Branch if not
-SETP40 ldx D.PROC Get process ptr
- sty R$X-R$SIZE,Y
- leay -R$SIZE,Y
- sty P$SP,X Set stack ptr
- lda P$ADDR,X Set beginning address
- clrb
- std R$U,Y
- sta R$DP,Y Get direct page ptr
- adda P$PagCnt,X Get end prt
- std R$Y,Y
- puls D Retrieve parameter byte count
- std R$D,Y Pass to process
- ldb #ENTIRE Set cc entire bit
- stb R$CC,Y
- ldu P$PModul,X Get module ptr
- ldd M$EXEC,U
- leau D,U Get module entry
- stu R$PC,Y Set new program counter
- clrb CLEAR Carry
 BADPAR ldb #E$IForkP Err: illegal fork parameters
-SETP50 puls X,U,PC
+ZSETP50 puls X,U,PC
+
  page
 *****
 *

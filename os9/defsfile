@@ -2,6 +2,7 @@ LEVEL equ 2 select level two
  ifp1
  use /d0/defs/os9defs
  use /d0/defs/os9sysdefs.lii
+ use /d0/defs/os9sysdefs.liicolor3
  use /d0/defs/os9iodefs
  use /d0/defs/os9rbfdefs
  use /d0/defs/os9scfdefs

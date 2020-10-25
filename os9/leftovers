@@ -1413,3 +1413,82 @@ ROMEnd equ *
  endc
 
  end
+
+PRCFUL comb SET Carry
+ ldb #E$PrcFul Err: process table full
+ rts
+
+*
+ bsr SETPRC Set up process
+ bcs FORK40 Branch if error
+ pshs X Save parent process ptr
+
+WAIT10 OS9 F$Find64 Get process ptr
+ ldx D.PrcDBT Get process descriptor block ptr
+ ldx D.PROC Get process ptr
+WAIT20 ldx D.PROC Get parent process ptr
+ lbra M0780
+
+*****
+*
+* Subroutine Chain
+*
+* Execute Overlay
+*
+CHAIN pshs U Save register ptr
+ ldx D.PROC Get process ptr
+ ldu P$PModul,X Get primary module ptr
+ OS9 F$Unlink
+ ldu 0,S Retrieve register ptr
+ bsr SETPRC Set up process
+ puls U,PC Clean stack
+
+
+ ldu D.PROC Get process ptr
+ leay P$CID-P$SID,U Fake sibling process
+ ldx D.PrcDBT Get process descriptor block
+ bra EXIT30
+EXIT20 clr P$SID,Y Clear sibling link
+ OS9 F$Find64 Get next process ptr
+ lda P$State,Y Get process status
+ bita #DEAD Is process dead?
+ beq EXIT25 Branch if not
+ lda P$ID,Y Return process to free
+ OS9 F$Ret64 Return process descriptor
+EXIT25 clr P$PID,Y Clear parent process ptr
+EXIT30 lda P$SID,Y Get sibling id
+ bne EXIT20 Branch if there is one
+ ldx #D.WProcQ-P$Queue Fake process ptr
+ lda P$PID,U Get parent process id
+ bne EXIT40 Branch if parent alive
+ ldx D.PrcDBT Get process block ptr
+ lda P$ID,U Get process id
+ OS9 F$Ret64 Return process descriptor
+ bra EXIT50
+EXIT35 cmpa P$ID,X Is this parent?
+ beq EXIT45 Branch if so
+EXIT40 leay 0,X Copy this process ptr
+ ldx P$Queue,X Get next process ptr
+ bne EXIT35 Branch if there is one
+ lda P$State,U Get process status
+ ora #DEAD Note process death
+ sta P$State,U Update status
+ bra EXIT50 Wait for parent to notice
+EXIT45 ldd P$Queue,X Remove parent from wait list
+ std P$Queue,Y
+ OS9 F$AProc Put parent in active process queue
+ leay 0,U Copy child ptr
+ ldu P$SP,X Get parent's stack
+ ldu R$D,U Get actual wait stack
+ lbsr CHILDS Return child status
+EXIT50 clra REMOVE Process from active system
+ clrb
+ std D.PROC
+ rts
+
+
+ leay 0,U Copy child ptr
+ ldu P$SP,X Get parent's stack
+ ldu R$D,U Get actual wait stack
+ lbsr CHILDS Return child status
+

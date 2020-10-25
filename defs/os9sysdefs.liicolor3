@@ -1,0 +1,302 @@
+* opt -l
+ ttl OS-9 Level 2 Color Computer 3 Global Symbol Definitions
+
+************************************************************
+*
+* System and CC3IO Memory Map (block 00)
+* Our personal disasm variable map from Rogue.
+* Kevin Darling 14 Feb 87, 30 Mar 87
+* Kent Meyers
+* Not necessarily accurate for latest versions.
+*
+* Edition History
+*
+*   Date    Changes Made
+* -------- ----------------------------------------------
+* 87/02/14 Disassembled from Rogue                       KKD
+* 87/03/30 Updates                                       KDM
+* 20/10/23 Reconstructed from Inside OS9 Level II        CJB
+*          Added temporary CC3.XXX labels
+*          Match to os9defs style
+*
+
+ page
+************************************************************
+*
+* Global and CC3IO Memory Starts at $01000:
+*
+ ORG $1000
+CC3.000 rmb 1
+CC3.001 rmb 1
+CC3.002 rmb 1 map side (grfdrv)
+ rmb 4
+CC3.007 rmb 2 grfdrv stack pointer
+CC3.009 rmb 1 monitor type (0,1,2)
+CC3.00A rmb 1 same as active dev flag
+CC3.00B rmb 1 v.type of this dev
+CC3.00C rmb 2 device static memory ptr
+CC3.00E rmb 1 Windint map flag?
+CC3.00F rmb 6 F$Alarm time packet
+CC3.015 rmb 1 F$Alarm process id
+CC3.016 rmb 1 F$Alarm signal code
+CC3.017 rmb 2 terminal bell vector
+CC3.019 rmb 2 ptr to default palette ptr
+CC3.01B rmb 1 tone duration in ticks
+CC3.01C rmb 1 bell flag
+CC3.01D rmb 3
+CC3.020 rmb 2 active window devmem
+ rmb 1
+CC3.023 rmb 1 screen changed flag
+CC3.024 rmb 1 $80=grf/windint,$02=vdg found
+CC3.025 rmb 2
+CC3.027 rmb 1 last keybd row fnd
+CC3.028 rmb 1
+CC3.029 rmb 1 repeat delay cnt now
+CC3.02A rmb 5 grfdrv init'd flag
+CC3.02F rmb 1
+CC3.030 rmb 1 SHIFT key down
+CC3.031 rmb 1 CTRL key down
+CC3.032 rmb 1
+CC3.033 rmb 1 ALT  key down
+CC3.034 rmb 1 keysns byte
+CC3.035 rmb 1 same key flag
+CC3.036 rmb 1 SHIFT/CLEAR flg
+CC3.037 rmb 1
+CC3.038 rmb 1 grfdrv init'd flag
+CC3.039 rmb 2
+CC3.03B rmb 1 mouse sample tick counter
+*
+*   Mouse Packet: ($20 bytes)
+*
+CC3.03C rmb 1 00
+CC3.03D rmb 1 fire bit#,rdflg 01
+*             bit O=fire button#
+*             bit l=side (O=right,l=left)
+*             bit 6=set if was keybd mouse
+CC3.03E rmb 1 timeout constant 02
+CC3.03F rmb 1 keybd flag 03
+CC3.040 rmb 1 04
+CC3.041 rmb 1 cntr 05
+CC3.042 rmb 2 0-FFFF cnt 06
+CC3.044 rmb 1 fire chg bit 08
+CC3.045 rmb 1 fire chg bit 09
+CC3.046 rmb 1 up time 0A
+CC3.047 rmb 1 up time 0B
+CC3.048 rmb 1 chg counter 0C
+CC3.049 rmb 1 chg counter 0D
+CC3.04A rmb 1 down time 0E
+CC3.04B rmb 1 down time 0F
+CC3.04C rmb 2 10
+CC3.04E rmb 2 returned X 12
+CC3.050 rmb 2 returned Y 14
+CC3.052 rmb 1 16
+CC3.053 rmb 1 O=old,l=hires 17
+CC3.054 rmb 2 X coordinate 18
+CC3.056 rmb 2 Y coordinate 1A
+CC3.058 rmb 2 X window 1C
+CC3.05A rmb 2 Y window 1E
+*
+CC3.05C rmb 4
+CC3.060 rmb 1 mouse sample rate
+CC3.061 rmb 1 first key delay ticks
+CC3.062 rmb 1 secondary repeat ticks
+CC3.063 rmb 1 enable kbdmouse toggle flag
+CC3.064 rmb 1 one shot ignore CLEAR key flag
+CC3.065 rmb 1 fire button dwn (Fl=Ol F2=04)
+CC3.066 rmb 1 mouse to use (AND 66+67<>0:update packet)
+CC3.067 rmb 1 mouse coord changed flag
+CC3.068 rmb 2 comodule entry vectors (4 total) ...
+CC3.06A rmb 2 vdgint entry
+ rmb 2
+CC3.06E rmb 2 grfdrv entry
+CC3.070 rmb 1 move data cntr for buffers
+CC3.071 rmb 4 32 bit window alloc map
+CC3.075 rmb 2 ptr to 576 byte gfx tables
+ rmb 72
+CC3.0BF rmb 1 cc3io L0116 flag (chg mouse?)
+ rmb 2
+CC3.0C2 rmb 2 cc3io shift-clear key sub (L06l4)
+CC3.0C4 rmb 2 cc3io set mouse sub (L06AE)
+CC3.0C6 rmb 1 fire not read: zero if ssig sent
+CC3.0C7 rmb 16 palette reg data (sys default)
+
+ page
+************************************************************
+*
+*     GrfDrv variables
+*
+ ORG $1100
+grfdrv equ $100 use for global offset
+ rmb 14
+CC3.10E rmb 1 char bsw bits
+ rmb 17
+CC3.120 rmb 2 ellipse parms:
+CC3.122 rmb 2 .
+CC3.124 rmb 2 .
+CC3.126 rmb 2 .
+ rmb 6
+CC3.12E rmb 2 windentry now
+CC3.130 rmb 2 screen tab1e now
+CC3.132 rmb 3 3 byte buffer tab1e
+CC3.135 rmb 3 grp,offset
+CC3.138 rmb 3 grp,offset returned (new)
+CC3.13B rmb 2 end of vars ptr?
+ rmb 10
+CC3.147 rmb 2 HBX,LBX
+CC3.149 rmb 2 HBY,LBY
+CC3.14B rmb 2 current X
+CC3.14D rmb 2 current Y
+CC3.14F rmb 2 HSX,LSX
+CC3.151 rmb 2 HSY,LSY
+CC3.153 rmb 2 Circ1e, e11ipse, arc
+CC3.155 rmb 2 E11ipse, arc
+CC3.157 rmb 1 GRP
+CC3.158 rmb 1 BFN
+CC3.159 rmb 1 SVS
+CC3.15A rmb 1 PRN
+CC3.15B rmb 2 BX putgc
+CC3.15D rmb 2 BY putgc
+CC3.15F rmb 1
+CC3.160 rmb 1 STY marker
+CC3.161 rmb 1 fore rgb data WE:06
+CC3.162 rmb 1 back rgb data WE:07
+CC3.163 rmb 1 bytes/row SC:04
+CC3.164 rmb 2 1set vector? WE:16
+CC3.166 rmb 2 Pset offset WE:0F
+CC3.168 rmb 2 grfdrv lset WE:14
+CC3.16A rmb 2 max x coord WE:1B
+CC3.16C rmb 2 max y coord WE:1D
+CC3.16E rmb 2 X pixel cnt
+CC3.170 rmb 2 Y pixe1 cnt
+CC3.172 rmb 2 get/put ow save screen strt
+ rmb 9
+CC3.17D rmb 1 buffer b1ock #  (get b1ock)
+CC3.17E rmb 2 buffer offset grp/bfn
+CC3.180 rmb 2 HBL,LBL
+CC3.182 rmb 2 3 byte extended screen address
+CC3.185 rmb 2 temp
+CC3.187 rmb 16 grfdrv (sysmap 1) DAT Image
+CC3.197 rmb 1 temp
+ rmb 1
+CC3.199 rmb 2 this windentry ptr
+CC3.19B rmb 1 counter temp
+CC3.19C rmb 1
+CC3.19D rmb 2 offset to buffer in block
+
+ page
+************************************************************
+*
+*     Window entry ($40 bytes)
+*
+ ORG -$10
+W.FF0 rmb 2 screen table ptr
+W.FF2 rmb 1 back wind# link
+W.FF3 rmb 2 screen logical start
+W.FF5 rmb 2 CPX, CPY
+W.FF7 rmb 2 SZX, SZY
+W.FF9 rmb 2 x,y sizes?
+W.FFB rmb 2 cursor address
+W.FFD rmb 1
+W.FFE rmb 1
+W.FFF rmb 1
+ ORG 0
+W.000 rmb 1 STY marker byte
+W.001 rmb 1
+W.002 rmb 1 X byte cnt (cwarea)
+W.003 rmb 1 cwarea temp
+W.004 rmb 2 bytes/row
+W.006 rmb 2 fore/back prn
+W.008 rmb 1 def attr byte FUTTTBBB
+W.009 rmb 1 char bsw bits: (default=$89)
+*            80 TChr
+*            40 Under
+*            20 Bold
+*            10 Prop
+*            08 Scale
+*            04 Invers
+*            02 NoCurs
+*            01 Protect
+W.00A rmb 1 LSET #
+W.00B rmb 1 GRP for font
+W.00C rmb 2 font offset
+W.00E rmb 1 GRP for PSET
+W.00F rmb 1 pset offset?
+W.010 rmb 1 LCD mode
+W.011 rmb 1 overlay grp
+W.012 rmb 2 overlay offset
+W.014 rmb 2 ptr to grfdrv LSET table
+W.016 rmb 2 vector (1FDE/1FF4)
+W.018 rmb 1 gcursor BFN
+W.019 rmb 2 gcursor offset
+W.01B rmb 2 max X  coord (0-79,0-639)
+W.01D rmb 2 max Y coord (etc txt/gfx)
+W.01F rmb 2 BLength
+W.021 rmb 3 grp/offset for next gpload
+W.024 rmb 2 screen logical start default
+W.026 rmb 2 cpx,cpy defaults
+W.028 rmb 2 szc,szt
+W.02A rmb 6 reserved
+W.Size equ .-W.FF0
+
+ page
+************************************************************
+*
+*     Window tables (32 at W.Size bytes each)
+*
+ ORG $1280
+W.Count equ 32
+CC3.280 rmb W.Count*W.Size
+CC3.290 equ CC3.280+$10 window table base offset used
+
+ page
+************************************************************
+*
+*     Screen entry ($20 bytes)
+*
+* Internal Screen Type marker byte:
+* User STY =>Mark ...
+*       FF   FF current screen
+*       00   FF current screen
+*       05   01 640 two color
+*       06   02 320 four
+*       07   03 640 four
+*       08   04 320 sixteen
+*       02   85 80 col
+*       01   86 40 col
+*
+ ORG 0
+S.000 rmb 1 STY marker
+S.001 rmb 1 first block # (used flag)
+S.002 rmb 2 screen logical start
+S.004 rmb 1 bytes/row
+S.005 rmb 1 border prn
+S.006 rmb 1 foregnd prn (software border)
+S.007 rmb 1 backgnd prn
+S.008 rmb 8
+S.010 rmb 16 palette regs (OORGBRGB)
+S.Size equ .-S.000
+
+ page
+************************************************************
+*
+*     Screen tables (32 at S.Size bytes each)
+*
+ ORG $1A80
+S.Count equ 32
+CC3.A80 rmb S.Count*S.Size
+
+ page
+************************************************************
+*
+*     Gfx Table (32 of 18 bytes each) pt'd to by CC3.075
+*
+ ORG 0
+G.Count equ 32
+G.000 rmb 1
+G.001 rmb 2 BX of graphics cursor
+G.003 rmb 2 BY
+G.005 rmb 13
+G.Size equ .-G.000
+
+ opt l
+
