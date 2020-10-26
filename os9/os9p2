@@ -160,25 +160,25 @@ SVCTBL equ *
  fcb F$Sleep
  fdb SLEEP-*-2
  fcb F$SPrior
- fdb SETPRI-*-2 M07A5
+ fdb SETPRI-*-2
  fcb F$ID
- fdb GETID-*-2 M07C1
+ fdb GETID-*-2
  fcb F$SSWI
- fdb SETSWI-*-2 M07CD
-M00C1 fcb F$STime
- fdb SetTime-*-2 M07E8
+ fdb SETSWI-*-2
+ fcb F$STime
+ fdb SetTime-*-2
  fcb F$SchBit
- fdb SCHBIT-*-2 M08E2
+ fdb SCHBIT-*-2
  fcb SysState+F$SchBit
- fdb SSCHBIT-*-2 M08EF
+ fdb SSCHBIT-*-2
  fcb F$AllBit
- fdb ALLBIT-*-2 M0817
+ fdb ABIT-*-2
  fcb SysState+F$AllBit
- fdb SALLBIT-*-2 M0824
-M00D0 fcb F$DelBit
- fdb DELBIT-*-2 M088B
+ fdb SABIT-*-2
+ fcb F$DelBit
+ fdb DBIT-*-2
  fcb SysState+F$DelBit
- fdb SDELBIT-*-2 M0898
+ fdb SDBIT-*-2
  fcb F$GPrDsc
  fdb GPRDSC-*-2 M094A
  fcb F$GBlkMp
@@ -1353,128 +1353,34 @@ WAKPRC pshs X
  page
 *****
 *
-*  Subroutine Syschn
-*
-* System Chain Routine
-*
-SYSCHN bsr CHAIN Do chain
- bcc USRC10 Branch if no error
-BADCHN pshs B Save error code
- stb P$Signal,X Set error status
- ldb P$State,X Get process status
- orb #CONDEM Condem process
- stb P$State,X
- ldb #$FF Set high priority
- stb P$Prior,X
- comb
- puls B,PC
-
-
-
-* fcb F$Find64+$80
-* fdb F64-*-2
-* fcb F$ALL64+$80
-* fdb A64-*-2
-* fcb F$Ret64+$80
-* fdb R64-*-2
-
-
- ldx D.PrcDBT Get process block ptr
- OS9 F$ALL64 Get new process descriptor
- bcs PRCFUL Branch if none left
-
- ldx D.PrcDBT Get process ptr
- OS9 F$ALL64 Get a process
- bcs COLD
- stx D.PrcDBT Set process block
- sty D.PROC
- tfr S,D copy stack ptr
- deca get page lower bound
- ldb #1 set page count
- std P$ADDR,Y set process descriptor
- lda #SysState Set system state
- sta P$State,Y
- ldu D.Init get configuration ptr
- bsr SETDIRS set default directories
- bcc COLD10 branch if successful
- lbsr BOOT Default failed, boot
- bsr SETDIRS try again
-COLD10 bsr SETSTDS open standard i/o
- bcc COLD20 branch if successful
- lbsr BOOT open failed, boot
- bsr SETSTDS try again
-COLD20 ldd InitStr,U Get initial execution string
- leax D,U Get string ptr
- lda #OBJCT set type
- clrb use declared memory
- ldy #0 No parameters
- OS9 F$Chain Start process
-
-COLD jmp [$FFFE] Abort start up
-
-SETDIRS clrb clear carry
- ldd SYSSTR,U Get system device name
- beq SETDIR10 Branch if none
- leax D,U Get name ptr
- lda #EXEC.+READ. Set both execution & data
- OS9 I$ChgDir Set default directory
-SETDIR10 rts
-
-SETSTDS clrb clear carry
- ldd STDSTR,U get name offset
- leax D,U get name ptr
- lda #UPDAT. set mode
- OS9 I$OPEN open file
- bcs SETSTD10 branch if error
- ldx D.PROC get process ptr
- sta P$PATH,X set standard input
- OS9 I$DUP count open image
- sta P$PATH+1,X set standard output
- OS9 I$DUP count open image
- sta P$PATH+2,X set standard error
-SETSTD10 rts
-
-
-
-*****
-*
-* Subroutine Div256
-*
-* Divide By 256, Rounding Up
-*
-DIV256 addd #$FF
- clrb ROUND Up
- exg A,B Divide by 256
- rts
-
-
-*****
-*
 *  Subroutine Setpri
 *
 * Set Process Priority
 *
+* Was Z07A5
 SETPRI lda R$A,U Get process id
- ldx D.PrcDBT Get process block ptr
- OS9 F$Find64 Find process descriptor
- bcs SETPR10
+ lbsr M0B2E Get process ptr
+ bcs SETPR20
  ldx D.PROC Get setting process ptr
  ldd P$USER,X Get setting user
+ beq SETPR5
  cmpd P$USER,Y Same as set user?
  bne SETPR10 Branch if not
- lda R$B,U Get priority
+SETPR5 lda R$B,U Get priority
  sta P$Prior,Y Set priority
+ clrb
  rts
+
 SETPR10 comb SET Carry
  ldb #E$IPrcID Err: illegal process id
- rts
+SETPR20 rts
 
-
-
+ page
 *****
 *
 *  Subroutine Getid
 *
+* Was Z07C1
 GETID ldx D.PROC Get process ptr
  lda P$ID,X Get process id
  sta R$A,U Return to user
@@ -1482,6 +1388,7 @@ GETID ldx D.PROC Get process ptr
  std R$Y,U Return to user
  clrb
  rts
+
  page
 *****
 *
@@ -1489,6 +1396,7 @@ GETID ldx D.PROC Get process ptr
 *
 * Set Software Interrupt Vectors
 *
+* Was Z07CD
 SETSWI ldx D.PROC Get process ptr
  leay P$SWI,X Get ptr to vectors
  ldb R$A,U Get swi code
@@ -1503,8 +1411,7 @@ SSWI10 comb
  ldb #E$ISWI
  rts
 
-
-
+ page
 **********
 *
 * Subroutine Settime
@@ -1512,20 +1419,256 @@ SSWI10 comb
 
 ClockNam fcs "Clock"
 
+* Was Z07E8
 SetTime ldx R$X,U get date ptr
- ldd 0,X get year & month
- std D.YEAR
- ldd 2,X get day & hour
- std D.DAY
- ldd 4,X get minute & second
- std D.MIN
+ tfr DP,A
+ ldb #D.Time GET ptr to time source
+ tfr D,U
+ ldy D.PROC Current process
+ lda P$Task,Y Source task
+ ldb D.SysTsk Destination task
+ ldy #D.Sec-D.Time+1 Byte count
+ OS9 F$Move Copy from caller
+ ldx D.PROC Current process
+ pshs X
+ ldx D.SYSPRC System process
+ stx D.PROC Set up to link into system space
  lda #SYSTM+OBJCT
  leax <ClockNam,PCR
  OS9 F$Link link to clock module
+ puls X
+ stx D.PROC 
  bcs SeTime99
  jmp 0,Y execute clock's initialization
- clrb
 SeTime99 rts
+
+ page
+*****
+*
+*  Subroutine Alocat
+*
+* Set Bits In Bit Map
+*
+* Input: D = Beginning Page Number
+*        X = Bit Map Address
+*        Y = Page Count
+* Output: None
+* Local: None
+* Global: None
+*
+* Was Z0817
+ABIT ldd R$D,U Get map ptr
+ ldx R$X,U Get beginning bit number
+ bsr FNDBIT
+ ldy D.PROC Current process
+ ldb P$Task,Y DAT image
+ bra ZALOCAT
+
+* Was Z0824
+SABIT ldd R$D,U Get map ptr
+ ldx R$X,U Get beginning bit number
+ bsr FNDBIT
+ ldb D.SysTsk System DAT image
+*
+* Fall through to ZALOCAT
+*
+ZALOCAT ldy R$Y,U Get bit count
+ beq ALOC40
+ sta ,-S Save mask
+ bmi ALOC15 Branch if first bit of byte
+ OS9 F$LDABX Get map byte
+ALOC10 ora 0,S Set bit
+ leay -1,Y Decrement page count
+ beq ALOC35 Branch if done
+ lsr 0,S Shift mask
+ bcc ALOC10 Branch if more in this byte
+ OS9 F$STABX Restore byte
+ leax 1,X
+ALOC15 lda #$FF Get eight pages worth
+ bra ALOC25
+ALOC20 OS9 F$STABX Get eight pages
+ leax 1,X
+ leay -8,Y
+ALOC25 cmpy #8 Are there eight left?
+ bhi ALOC20 Branch if more
+ beq ALOC35 Branch if exactly
+ALOC30 lsra MAKE Final mask
+ leay -1,Y Decrement page count
+ bne ALOC30
+ coma
+ sta ,S SET Final mask
+ OS9 F$LDABX Get map byte
+ ora ,S Set final bits
+ALOC35 OS9 F$STABX Set byte
+ leas 1,S Clean stack
+ALOC40 clrb CLEAR Carry
+ rts
+
+ page
+*****
+*
+*  Subroutine Fndbit
+*
+* Make Page Number Into Ptr & Mask
+*
+* Input: D = Page Number
+*        X = Map Beginning Address
+* Output: A = Bit Mask
+*         B = 0
+*         X = Byte Address
+* Local: None
+* Global: None
+*
+* Was Z086E
+FNDBIT pshs Y,B Save lsb
+ lsra PAGE/2
+ rorb
+ lsra PAGE/4
+ rorb
+ lsra PAGE/8
+ rorb
+ leax D,X Get byte address
+ puls B Get lsb
+ leay <BITMASK,PCR Get mask
+ andb #7 Page modulo 8
+ lda B,Y Get starting bit mask
+ puls Y,PC
+
+BITMASK fcb %10000000,%01000000,%00100000,%00010000
+ fcb %00001000,%00000100,%00000010,%00000001
+
+ page
+*****
+*
+*  Subroutine Dealoc
+*
+* Deallocates Space In Bit Map
+*
+* Input: D = Beginning Page Number
+*        X = Bit Map Address
+*        Y = Page Count
+* Output: None
+* Local: None
+* Global: None
+*
+* Was Z088B
+DBIT ldd R$D,U Get map ptr
+ ldx R$X,U Get beginning bit number
+ bsr FNDBIT
+ ldy D.PROC Current process
+ ldb P$Task,Y DAT image
+ bra DEALOC
+
+* Was Z0898
+SDBIT ldd R$D,U Get map ptr
+ ldx R$X,U Get beginning bit number
+ bsr FNDBIT
+ ldb D.SysTsk System DAT image
+*
+* Fall through to DEALOC
+*
+DEALOC ldy R$Y,U Get bit count
+ beq DEAL40
+ coma Invert mask
+ sta ,-S Save mask
+ bpl DEAL15 Branch if first bit of byte
+ OS9 F$LDABX Get map byte
+DEAL10 anda 0,S Clear bit
+ leay -1,Y Decrement page count
+ beq DEAL35 Branch if done
+ asr 0,S Shift mask
+ bcs DEAL10 Branch if more in this byte
+ OS9 F$STABX Restore byte
+ leax 1,X
+DEAL15 clra Clear eight pages worth
+ bra DEAL25
+DEAL20 OS9 F$STABX Clear map byte
+ leax 1,X
+ leay -8,Y
+DEAL25 cmpy #8 Are there eight left?
+ bhi DEAL20 Branch if more
+ beq DEAL35 Branch if exactly
+ coma REVERSE mask
+DEAL30 lsra MAKE Final mask
+ leay -1,Y Decrement page count
+ bne DEAL30
+ sta ,S SET Final mask
+ OS9 F$LDABX Get map byte
+ anda ,S Clear map bits
+DEAL35 OS9 F$STABX Set map byte
+ leas 1,S Clean stack
+DEAL40 clrb CLEAR Carry
+ rts
+
+ page
+*****
+*
+*  Subroutine Floblk
+*
+* Find Free Block Searching Up
+*
+* Same As Fhiblk
+*
+* Was Z08E2
+SCHBIT ldd R$D,U Get map ptr
+ ldx R$X,U Get beginning bit number
+ bsr FNDBIT
+ ldy D.PROC Current process
+ ldb P$Task,Y DAT image
+ bra FLOBLK
+
+* Was Z08EF
+SSCHBIT ldd R$D,U Get map ptr
+ ldx R$X,U Get beginning bit number
+ lbsr FNDBIT
+ ldb D.SysTsk System DAT image
+*
+* Fall through to FLOBLK
+*
+FLOBLK pshs U,Y,X,D,CC Save registers
+ clra Clear size found
+ clrb
+ std 3,S
+ ldy R$D,U Get beginning bit number
+ sty 7,S Save it
+ bra FLOB20
+
+FLOB10 sty 7,S Save beginning page number
+FLOB15 lsr 1,S Shift mask
+ bcc FLOB25 Branch if mask okay
+ ror 1,S Shift mask around end
+ leax 1,X Move map ptr
+FLOB20 cmpx R$U,U End of map?
+ bcc FLOB30 Branch if so
+ ldb 2,S GET DAT task
+ OS9 F$LDABX Get map byte
+ sta ,S Save map byte
+FLOB25 leay 1,Y Move page number
+ lda ,S Get map byte
+ anda 1,S Mask bit
+ bne FLOB10 Branch if in use
+ tfr Y,D Copy page number
+ subd 7,S Subtract beginning page number
+ cmpd R$Y,U Block big enough?
+ bcc FLOB35 Branch if so
+ cmpd 3,S Biggest so far?
+ bls FLOB15 Branch if not
+ std 3,S Save size
+ ldd 7,S Copy beginning page number
+ std 5,S
+ bra FLOB15
+FLOB30 ldd 3,S Get beginning page number of largest
+ std R$Y,U Return it
+ comb SET Carry
+ ldd 5,S Get beginning page number of match
+ bra FLOB40
+FLOB35 ldd 7,S Get beginning page number
+FLOB40 std R$D,U Return starting bit number
+ leas 9,S Return scratch
+ rts
+
+* Was Z094A
+
  page
 ***************
 * Findpd
@@ -2384,184 +2527,6 @@ ZCRCC30 puls X,Y,PC
 BADPAR ldb #E$IForkP Err: illegal fork parameters
 ZSETP50 puls X,U,PC
 
- page
-*****
-*
-*  Subroutine Alocat
-*
-* Set Bits In Bit Map
-*
-* Input: D = Beginning Page Number
-*        X = Bit Map Address
-*        Y = Page Count
-* Output: None
-* Local: None
-* Global: None
-*
-ABIT ldd R$D,U Get beginning bit number
- leau R$X,U
- pulu X,Y Get bit map addr & bit count
-ZALOCAT pshs D,X,Y Save registers
- bsr FNDBIT Adjust map ptr & get bit mask
- tsta TEST Mask
- pshs A Save mask
- bmi ALOC15 Branch if first bit of byte
- lda 0,X Get map byte
-ALOC10 ora 0,S Set bit
- leay -1,Y Decrement page count
- beq ALOC35 Branch if done
- lsr 0,S Shift mask
- bcc ALOC10 Branch if more in this byte
- sta ,X+ Restore byte
-ALOC15 tfr Y,D Copy page count
- sta 0,S Save msb
- lda #$FF Get eight pages worth
- bra ALOC25
-ALOC20 sta ,X+ Get eight pages
-ALOC25 subb #8 Are there eight left?
- bcc ALOC20 Branch if so
- dec 0,S Any msb left?
- bpl ALOC20 Branch if so
-ALOC30 asla MAKE Final mask
- incb MOVE Count to zero
- bne ALOC30 Branch if not done
- ora 0,X Set final bits
-ALOC35 sta 0,X Set byte
- clra CLEAR Carry
- leas 1,S Return scratch
- puls D,X,Y,PC
- page
-*****
-*
-*  Subroutine Fndbit
-*
-* Make Page Number Into Ptr & Mask
-*
-* Input: D = Page Number
-*        X = Map Beginning Address
-* Output: A = Bit Mask
-*         B = 0
-*         X = Byte Address
-* Local: None
-* Global: None
-*
-FNDBIT pshs B Save lsb
- lsra PAGE/2
- rorb
- lsra PAGE/4
- rorb
- lsra PAGE/8
- rorb
- leax D,X Get byte address
- puls B Get lsb
- lda #$80 Get mask
- andb #7 Page modulo 8
- beq FNDB20 Branch if done
-FNDB10 lsra SHIFT Mask
- decb
- bne FNDB10
-FNDB20 rts
- page
-*****
-*
-*  Subroutine Dealoc
-*
-* Deallocates Space In Bit Map
-*
-* Input: D = Beginning Page Number
-*        X = Bit Map Address
-*        Y = Page Count
-* Output: None
-* Local: None
-* Global: None
-*
-DBIT ldd R$D,U Get beginning bit number
- leau R$X,U
- pulu X,Y Get bit map addr & bit count
-DEALOC pshs D,X,Y Save registers
- bsr FNDBIT Adjust map ptr & get bit mask
- coma REVERSE Mask
- pshs A save it
- bpl DEAL10 branch if first bit of byte
- lda 0,X get map byte
-DEAL05 anda 0,S Clear bit
- leay -1,Y Decrement page count
- beq DEAL30 Branch if done
- asr 0,S Shift mask
- bcs DEAL05 Branch if more
- sta ,X+ Store map byte
-DEAL10 tfr Y,D Copy page count
- bra DEAL20
-DEAL15 clr ,X+ Clear map byte
-DEAL20 subd #8 Are there eight left?
- bhi DEAL15 Branch if so
- beq DEAL30 Branch if done
-DEAL25 asla MAKE Final mask
- incb
- bne DEAL25
- coma REVERSE Mask
- anda 0,X Clear map bits
-DEAL30 sta 0,X Store map byte
- clr ,S+ Clear carry & return scratch
- puls D,X,Y,PC
- page
-*****
-*
-*  Subroutine Floblk
-*
-* Find Free Block Searching Up
-*
-* Same As Fhiblk
-*
-SBIT pshs U Save register ptr
- ldd R$D,U Get beginning bit number
- ldx R$X,U Get bit map ptr
- ldy R$Y,U Get bit count
- ldu R$U,U Get map end addr
- bsr FLOBLK Search bit map
- puls U Retrieve register ptr
- std R$D,U Return bit number
- sty R$Y,U return bits found
- rts
-
-FLOBLK pshs D,X,Y,U Save registers
- pshs D,Y Copy beginning page number & size
- clr 8,S Clear size found
- clr 9,S
- tfr D,Y Copy beginning page number
- bsr FNDBIT Adjust map ptr & get bit mask
- pshs A Save mask
- bra FLOB20
-FLOB10 leay 1,Y Move beginning bit number
- sty 5,S Save beginning block number
-FLOB15 lsr 0,S Shift mask
- bcc FLOB25 Branch if mask okay
- ror 0,S Shift mask around end
- leax 1,X Move map ptr
-FLOB20 cmpx 11,S End of map?
- bcc FLOB30 Branch if so
-FLOB25 lda 0,X Get map byte
- anda 0,S Mask bit
- bne FLOB10 Branch if in use
- leay 1,Y Move page number
- tfr Y,D Copy page number
- subd 5,S Subtract beginning page number
- cmpd 3,S Block big enough?
- bcc FLOB35 Branch if so
- cmpd 9,S Biggest so far?
- bls FLOB15 Branch if not
- std 9,S Save size
- ldd 5,S Copy beginning page number
- std 1,S
- bra FLOB15
-FLOB30 ldd 1,S Get beginning page number of largest
- std 5,S Return it
- coma SET Carry
- bra FLOB40
-FLOB35 std 9,S Return size
-FLOB40 leas 5,S Return scratch
- puls D,X,Y,U,PC
-
  ifne 0
 *** CJB UNUSED CODE ***
 
@@ -2579,6 +2544,108 @@ FLOB40 leas 5,S Return scratch
 * exg A,B Make address into page number
 * ldx D.FMBM Get bit map ptr
 * OS9 F$DelBit Deallocate memory blocki
+
+
+
+
+
+
+ page
+*****
+*
+*  Subroutine Syschn
+*
+* System Chain Routine
+*
+SYSCHN bsr CHAIN Do chain
+ bcc USRC10 Branch if no error
+BADCHN pshs B Save error code
+ stb P$Signal,X Set error status
+ ldb P$State,X Get process status
+ orb #CONDEM Condem process
+ stb P$State,X
+ ldb #$FF Set high priority
+ stb P$Prior,X
+ comb
+ puls B,PC
+
+
+
+* fcb F$Find64+$80
+* fdb F64-*-2
+* fcb F$ALL64+$80
+* fdb A64-*-2
+* fcb F$Ret64+$80
+* fdb R64-*-2
+
+
+ ldx D.PrcDBT Get process block ptr
+ OS9 F$ALL64 Get new process descriptor
+ bcs PRCFUL Branch if none left
+
+ ldx D.PrcDBT Get process ptr
+ OS9 F$ALL64 Get a process
+ bcs COLD
+ stx D.PrcDBT Set process block
+ sty D.PROC
+ tfr S,D copy stack ptr
+ deca get page lower bound
+ ldb #1 set page count
+ std P$ADDR,Y set process descriptor
+ lda #SysState Set system state
+ sta P$State,Y
+ ldu D.Init get configuration ptr
+ bsr SETDIRS set default directories
+ bcc COLD10 branch if successful
+ lbsr BOOT Default failed, boot
+ bsr SETDIRS try again
+COLD10 bsr SETSTDS open standard i/o
+ bcc COLD20 branch if successful
+ lbsr BOOT open failed, boot
+ bsr SETSTDS try again
+COLD20 ldd InitStr,U Get initial execution string
+ leax D,U Get string ptr
+ lda #OBJCT set type
+ clrb use declared memory
+ ldy #0 No parameters
+ OS9 F$Chain Start process
+
+COLD jmp [$FFFE] Abort start up
+
+SETDIRS clrb clear carry
+ ldd SYSSTR,U Get system device name
+ beq SETDIR10 Branch if none
+ leax D,U Get name ptr
+ lda #EXEC.+READ. Set both execution & data
+ OS9 I$ChgDir Set default directory
+SETDIR10 rts
+
+SETSTDS clrb clear carry
+ ldd STDSTR,U get name offset
+ leax D,U get name ptr
+ lda #UPDAT. set mode
+ OS9 I$OPEN open file
+ bcs SETSTD10 branch if error
+ ldx D.PROC get process ptr
+ sta P$PATH,X set standard input
+ OS9 I$DUP count open image
+ sta P$PATH+1,X set standard output
+ OS9 I$DUP count open image
+ sta P$PATH+2,X set standard error
+SETSTD10 rts
+
+
+
+*****
+*
+* Subroutine Div256
+*
+* Divide By 256, Rounding Up
+*
+DIV256 addd #$FF
+ clrb ROUND Up
+ exg A,B Divide by 256
+ rts
 
 
  endc
