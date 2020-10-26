@@ -150,15 +150,15 @@ SVCTBL equ *
  fcb F$CHAIN
  fdb USRCHN-*-2
  fcb F$EXIT
- fdb EXIT-*-2 M0544
+ fdb EXIT-*-2
  fcb F$MEM
- fdb USRMEM-*-2 M05DF
+ fdb USRMEM-*-2
  fcb F$SEND
- fdb SEND-*-2 M0640
+ fdb SEND-*-2
  fcb F$ICPT
- fdb INTCPT-*-2 M06F6
+ fdb INTCPT-*-2
  fcb F$Sleep
- fdb SLEEP-*-2 M0704
+ fdb SLEEP-*-2
  fcb F$SPrior
  fdb SETPRI-*-2 M07A5
  fcb F$ID
@@ -607,7 +607,7 @@ WAIT10 lbsr M0B2E Get process ptr
  deca Wake-up Signal?
  bne WAIT15 no; continue
  sta P$Signal,X Clear signal
-WAIT15 lbra M071B
+WAIT15 lbra SLEP15
 WAIT20 ldd D.WProcQ Put in waiting queue
  std P$Queue,X
  stx D.WProcQ
@@ -923,7 +923,7 @@ EXIT20 clr P$SID,Y Clear sibling link
 EXIT25 lda P$SID,Y Get sibling id
  bne EXIT20 Branch if there is one
  leay ,X Get process ptr
- ldx #(D.WProcQ-P$Queue) Fake process; P$Queue,X will be D.WProcQ
+ ldx #D.WProcQ-P$Queue Fake process ptr; P$Queue,X will be D.WProcQ
  lds D.SysStk Use system stack
  pshs CC
  orcc #IRQMask+FIRQMask Set interrupt masks
@@ -934,10 +934,16 @@ EXIT25 lda P$SID,Y Get sibling id
  lbsr DELPRC Delete process
  bra M05A2
 
+*****
+*
+*  Subroutine EXIT40
+*
+* Find parent process and return child status
+*
+
 EXIT35 cmpa P$ID,X Is this parent?
  beq EXIT45
 
-* Find parent process
 * Was Z0584
 EXIT40 leau 0,X Copy this process ptr
  ldx P$Queue,X Get next process ptr
@@ -958,6 +964,8 @@ EXIT45 ldd P$Queue,X Remove parent from wait list
 M05A2 OS9 F$NProc Start next process
 
 **********
+*
+*  Subroutine M05A5
 *
 * Close paths, unlink and return DAT image
 *
@@ -1003,66 +1011,346 @@ M05CB ldd D.PROC Get process ptr
 *
 * Adjust User Memory To Requested Size
 *
+* Was Z05DF
 USRMEM ldx D.PROC get process ptr
  ldd R$D,U Get size requested
  beq USRM35 branch if info request
- bsr DIV256 Divide by 256, rounding up
- subb P$PagCnt,X Subtract current size
+ addd #256-1 Divide by 256, rounding up
+ bcc USRMEM5 Branch if no overflow
+
+ ldb #E$MemFul Err: memory full
+ bra BADMEM
+
+USRMEM5 cmpa P$PagCnt,X Subtract current size
  beq USRM35 Branch if already requested size
- bcs USRM20 Branch if current > requested
- tfr D,Y Copy pages needed
- ldx P$ADDR,X Get memory address & size
- pshs X,Y,U Save registers
- ldb 0,S Get address
- beq USRM10 Branch if none
- addb 1,S Get location of new
-USRM10 ldx D.FMBM Get free memory ptrs
- ldu D.FMBM+2
- OS9 F$SchBit Look for memory
- bcs BADMEM Branch if not available
- stb 2,S Save page number of new
- ldb 0,S Get beginning of old
- beq USRM15 Branch if none
- addb 1,S Add size old
- cmpb 2,S Is that where new begins?
- bne BADMEM Branch if not
-USRM15 ldb 2,S Get page number of new
- OS9 F$AllBit Allocate memory
- ldd 2,S Get new address & size
- suba 1,S Get address of current
- addb 1,S Get size current
- puls X,Y,U
- ldx D.PROC Get process ptr
- bra USRM30
-USRM20 negb GET Excess page count
- tfr D,Y Copy it
- negb GET Size requested
- addb P$PagCnt,X
- addb P$ADDR,X Get page number of excess
- cmpb P$SP,X Deallocating stack?
- bhi USRM25 Branch if not
- comb SET Carry
+ pshs A Save requested page count
+ bcc USRM20 Branch if current < requested
+
+* Reduce memory size
+ deca Page containing stack
+ ldb #$100-R$SIZE Get stack address
+ cmpd P$SP,X Deallocating stack?
+ bhs USRM20 Branch if not
+
  ldb #E$DelSP
+ bra M0627 
+
+* Was Z0602
+USRM20 lda P$PagCnt,X GET current top ptr
+ adda #(DAT.BlSz/256)-1 Round to whole DAT block
+ lsra Convert to block offset
+ lsra
+ lsra
+ ifge (DAT.BlSz-$1000)
+ lsra
+ ifge (DAT.BlSz-$2000)
+ lsra
+ endc
+ endc
+
+ ldb ,S GET size requested
+ addb #(DAT.BlSz/256)-1 Round to whole DAT block
+ bcc USRM21
+
+ ldb #E$MemFul Err: memory full
+ bra M0627
+
+USRM21 lsrb Convert to block offset
+ lsrb
+ lsrb
+ ifge (DAT.BlSz-$1000)
+ lsrb
+ ifge (DAT.BlSz-$2000)
+ lsrb
+ endc
+ endc
+
+ pshs A
+ subb ,S+ GET needed block count
+ beq USRM30 Branch if none
+ bcs USRM25 Branch if excess
+
+* Get B extra blocks at A
+ OS9 F$AllImg Allocate memory
+ bcc USRM30 Branch if success
+
+* Was Z0629
+M0627 leas 1,S Clean stack
+BADMEM orcc #CARRY
  rts
-USRM25 ldx D.FMBM Get free memory ptr
- OS9 F$DelBit Deallocate memory
- tfr Y,D Copy excess page count
- negb
- ldx D.PROC Get process ptr
- addb P$PagCnt,X Adjust page count
- lda P$ADDR,X Get address
-USRM30 std P$ADDR,X Set new address & size
-USRM35 lda P$PagCnt,X Get process beginning address
+
+* Was Z062C
+* Give back -B extra blocks
+USRM25 pshs B
+ adda ,S+ GET new top ptr
+ negb Get excess block count
+ OS9 F$DelImg Deallocate memory
+
+USRM30 puls A GET current top ptr
+ sta P$PagCnt,X SET page count
+* Was Z0638
+USRM35 lda P$PagCnt,X Get process top ptr
  clrb CLEAR Lsb
  std R$D,U Return memory size
- adda P$ADDR,X Return ptr to memory end
- std R$Y,U
+ std R$Y,U Return top ptr
  rts
 
-BADMEM comb SET Carry
- ldb #E$MemFul Err: memory full
- puls X,Y,U,PC
+ page
+*****
+*
+*  Subroutine Send
+*
+* Send a Signal to Process(es)
+*
+* Was Z0640
+SEND ldx D.PROC Get process ptr
+ lda R$A,U Get destination process id
+ bne SENSUB Branch if not all processes
+*
+* Loop thru all Process Ids, send Signal to all but Sender
+*
+ inca Start with process 1
+SEND10 cmpa P$ID,X Is this sender?
+ beq SEND15 Branch if so
+ bsr SENSUB Signal process
+SEND15 inca Get next process id
+ bne SEND10 Branch if more
+ clrb Clear Carry
+ rts
+*
+* Signal destination process
+*
+SENSUB lbsr M0B2E Get process ptr
+ pshs U,Y,A,CC
+ bcs SENSUBX
+ tst R$B,U Is it unconditional abort signal?
+ bne SEND20 Branch if not
 
+ ldd P$User,X Get sending user
+ beq SEND20
+
+ cmpd P$User,Y Same as current user?
+ beq SEND20
+
+ ldb #E$IPrcID Err: illegal process id
+ inc ,S SET saved carry (know it was clear from M0B2E)
+SENSUBX lbra SEND75
+
+*
+* Check for Signal collision
+*
+SEND20 orcc #IRQMask+FIRQMask Set interrupt masks
+ ldb R$B,U Is it unconditional abort signal?
+ bne SEND30
+
+ ldb #E$PrcAbt Err: process abort
+ lda P$State,Y Get process status
+ ora #CONDEM Condem process
+ sta P$State,Y Update status
+
+SEND30 lda P$State,Y Get process status
+ anda #$FF-SUSPEND No longer suspended
+ sta P$State,Y Update status
+ lda P$Signal,Y Is signal pending?
+ beq SEND40 Branch if not
+ deca Is it wake-up?
+ beq SEND40 Branch if so
+ inc ,S SET saved carry (know it was clear from M0B2E)
+ ldb #E$USigP Err: unprocessed signal pending
+ bra SEND75
+
+* Was Z068F
+SEND40 stb P$Signal,Y Save signal
+*
+* Look for Process in Sleeping Queue
+*
+ ldx #D.SProcQ-P$Queue Fake process ptr; P$Queue,X will be D.SProcQ
+ clra
+ clrb
+
+* Was Z0697
+SEND45 leay ,X Save process ptr
+*
+*** Ed. 6 changes follow
+*
+ ldx P$Queue,x get next process in queue
+ beq SEND55 branch if none
+ ldu P$SP,x get process stack ptr
+ addd R$X,u add remaining time to total
+ cmpx 2,s Is this destination process?
+ bne SEND45 branch if not
+
+ pshs d Save total time
+ lda P$State,x get process state
+ bita #TimSleep is process in timed sleep?
+ beq SEND50 branch if not
+ ldd ,s get total time
+ beq SEND50 branch if none
+ ldd R$X,U get remaining time
+ pshs d save remaining time
+ ldd 2,s get total time
+ std R$X,u update it
+ puls d retrieve remaining time
+ ldu P$Queue,x get next process in queue
+ beq SEND50 branch if none
+ std ,s update total time
+ lda P$State,u get process state
+ bita #TimSleep is it in timed sleep?
+ beq SEND50 branch if not
+
+ ldu P$SP,u get process stack ptr
+ ldd ,s get total time
+ addd R$X,u add remaining time
+ std R$X,u update it
+*
+*** end of Ed. 6 changes
+*
+* Was Z06CF
+SEND50 leas 2,S Clean stack
+ bra SEND65
+*
+* Look for Process in Waiting Queue
+*
+SEND55 ldx #D.WProcQ-P$Queue Fake process ptr; P$Queue,X will be D.WProcQ
+SEND60 leay 0,X Copy process ptr
+ ldx P$Queue,X More in queue?
+ beq SEND75 Branch if not
+ cmpx 2,S Is this destination process?
+ bne SEND60 Branch if not
+*
+* Move Process from it's current Queue to Active Queue
+*
+* Was Z06E0
+SEND65 ldd P$Queue,X Remove from queue
+ std P$Queue,Y
+ lda P$Signal,X Get signal
+ deca Is it wake-up?
+ bne SEND70 Branch if not
+ sta P$Signal,X Clear signal
+ lda ,S Restore interrupt masks
+ tfr A,CC
+SEND70 OS9 F$AProc Put in active queue
+SEND75 puls CC,A,Y,U,PC
+
+ page
+*****
+*
+*  Subroutine Intcpt
+*
+* Signal Intercept Handler
+*
+* Was Z06F6
+INTCPT ldx D.PROC Get process ptr
+ ldd R$X,U Get vector
+ std P$SigVec,X Save it
+ ldd R$U,U Get data address
+ std P$SigDat,X Save it
+ clrb CLEAR Carry
+ rts
+
+ page
+*****
+*
+*  Subroutine Sleep
+*
+* Suspend Process
+*
+* Was Z0704
+SLEEP pshs CC
+ ldx D.PROC Get current process
+ orcc #IRQMask+FIRQMask Set interrupt mask
+ lda P$Signal,X Signal waiting?
+ beq SLEP20 Branch if not
+ deca IS It wake-up?
+ bne SLEP10 Branch if not
+ sta P$Signal,X Clear signal
+SLEP10 lda P$State,X Get process status
+ anda #$FF-SUSPEND No longer suspended
+ sta P$State,X Update status
+SLEP15 puls CC
+ OS9 F$AProc Put process in active queue
+ bra ZZZPRC Suspend process
+* Was Z0722
+SLEP20 ldd R$X,U Get length of sleep
+ beq SLEP55 Branch if indefinite
+ subd #1 count current tick
+ std R$X,U update count
+ beq SLEP15 branch if done
+ pshs Y,X Save process & allocate temp
+ ldx #D.SProcQ-P$Queue Fake process ptr; P$Queue,X will be D.SProcQ
+SLEP30 std R$X,U Save sleep time
+ stx 2,S Save linked list ptr
+ ldx P$Queue,X Get next process
+ beq SLEP40 Branch if end of queue
+ lda P$State,X Get process status
+ bita #TimSleep In timed sleep?
+ beq SLEP40 Branch if not timed sleep
+ ldy P$SP,X Get process stack ptr
+ ldd R$X,U Get sleep time
+ subd R$X,Y Subtract sleep time
+ bcc SLEP30 Branch if not greater
+ nega
+ negb
+ sbca #0 Get remaining time
+ std R$X,Y Set time to sleep
+SLEP40 puls X,Y Retrieve proc to wake and process ptr
+ lda P$State,X Set timed sleep status
+ ora #TimSleep
+ sta P$State,X
+ ldd P$Queue,Y Put process in queue
+ stx P$Queue,Y
+ std P$Queue,X
+ ldx R$X,U Get time to sleep
+ bsr ZZZPRC Subtract new sleep
+ stx R$X,U Update sleep time
+ ldx D.PROC Get current process
+ lda P$State,X Get status
+ anda #$FF-TimSleep Set not timed sleep
+ sta P$State,X
+ puls CC,PC
+
+* Was Z076D
+SLEP55 ldx #D.SProcQ-P$Queue Fake process ptr; P$Queue,X will be D.SProcQ
+SLEP60 leay ,X Copy process ptr
+ ldx P$Queue,X Get next process ptr
+ bne SLEP60 Branch if one exists
+ ldx D.PROC Get current process ptr
+ clra
+ clrb
+ stx P$Queue,Y Link into queue
+ std P$Queue,X
+ puls CC
+*
+*      Fall Thru To Zzzprc
+*
+*****
+*
+*  Subroutine Zzzprc
+*
+* Deactivate Process, Start Another
+*
+* Was Z0780
+ZZZPRC pshs PC,U,Y,X
+ leax <WAKPRC,PCR Get wakeup address
+ stx 6,S Make new pc
+ ldx D.PROC Get process ptr
+ ldb P$Task,X
+ cmpb D.SysTsk Is it the system task?
+ beq ZZZPRC5 Branch if yes
+ OS9 F$DelTsk Free the DAT
+ZZZPRC5 ldd P$SP,X Get process stack
+ pshs DP,D,CC Make new stack
+ sts P$SP,X Note location
+ OS9 F$NProc Start another process
+
+* Destination address when process awakens
+WAKPRC pshs X
+ ldx D.PROC GET current process
+ std P$SP,X Restore previous stack
+ clrb CLEAR Carry
+ puls X,PC
+
+ page
 *****
 *
 *  Subroutine Syschn
@@ -1158,221 +1446,6 @@ DIV256 addd #$FF
  clrb ROUND Up
  exg A,B Divide by 256
  rts
- page
-*****
-*
-*  Subroutine Send
-*
-* Send a Signal to Process(es)
-*
-SEND lda R$A,U Get destination process id
- bne SENSUB Branch if not all processes
-*
-* Loop thru all Process Ids, send Signal to all but Sender
-*
- inca Start with process 1
-SEND10 ldx D.PROC Get process ptr
- cmpa P$ID,X Is this sender?
- beq SEND15 Branch if so
- bsr SENSUB Signal process
-SEND15 inca Get next process id
- bne SEND10 Branch if more
- clrb Clear Carry
- rts
-*
-* Get destination Process ptr
-*
-SENSUB ldx D.PrcDBT Get process descriptor block ptr
- OS9 F$Find64 Get process ptr
- bcc SEND18 Branch if good
- ldb #E$IPrcID Err: illegal process id
- rts
-*
-* Illegal process id
-*
-ILLPRC comb
- ldb #E$IPrcID Err: illegal process id
- puls A,Y,PC
-*
-* Check Signal type
-*
-SEND18 pshs Y,A
- ldb R$B,U Is it unconditional abort signal?
- bne SEND30 Branch if not
- ldx D.Proc
- ldd P$USER,X Get sending user
- beq SEND20
- cmpd P$User,Y Same as current user?
- bne ILLPRC
-SEND20 lda P$State,Y Get process status
- ora #CONDEM Condem process
- sta P$State,Y Update status
-*
-* Check for Signal collision
-*
-SEND30 orcc #IRQMask+FIRQMask Set interrupt masks
- lda P$Signal,Y Is signal pending?
- beq SEND40 Branch if not
- deca Is it wake-up?
- beq SEND40 Branch if so
- comb Set Carry
- ldb #E$USigP Err: unprocessed signal pending
- puls A,Y,PC
-SEND40 ldb 2,U
- stb P$Signal,Y Save signal
-*
-* Look for Process in Sleeping Queue
-*
- ldx #D.SProcQ-P$Queue Fake process ptr
- bra SEND55
-SEND50 cmpx 1,S Is this destination process?
-*
-*** Ed. 6 changes follow
-*
- bne SEND55 branch if not
- lda P$State,x get process state
- bita #TimSleep is process in timed sleep?
- beq SEND65 branch if not
- ldu P$SP,x get process stack ptr
- ldd R$X,u get remaining time
- beq SEND65 branch if none
- ldu P$Queue,x get next process in queue
- beq SEND65 branch if none
- pshs d save remaining time
- lda P$State,u get process state
- bita #TimSleep is it in timed sleep?
- puls d retrieve remaining time
- beq SEND65 branch if not
- ldu P$SP,u get process stack ptr
- addd R$X,u add remaining time
- std R$X,u update it
- bra SEND65
-*
-*** end of Ed. 6 changes
-*
-SEND55 leay 0,X Copy process ptr
- ldx P$Queue,Y More in queue?
- bne SEND50 Branch if so
-*
-* Look for Process in Waiting Queue
-*
- ldx #D.WProcQ-P$Queue Fake process ptr
-SEND60 leay 0,X Copy process ptr
- ldx P$Queue,Y More in queue?
- beq SEND75 Branch if not
- cmpx 1,S Is this destination process?
- bne SEND60 Branch if not
-*
-* Move Process from it's current Queue to Active Queue
-*
-SEND65 ldd P$Queue,X Remove from queue
- std P$Queue,Y
- lda P$Signal,X Get signal
- deca Is it wake-up?
- bne SEND70 Branch if not
- sta P$Signal,X Clear signal
-SEND70 OS9 F$AProc Put in active queue
-SEND75 clrb Clear carry
- puls A,Y,PC
- page
-*****
-*
-*  Subroutine Sleep
-*
-* Suspend Process
-*
-SLEEP ldx D.PROC Get current process
- orcc #IRQMask+FIRQMask Set interrupt mask
- lda P$Signal,X Signal waiting?
- beq SLEP20 Branch if not
-CKSIGN deca IS It wake-up?
- bne SLEP10 Branch if not
- sta P$Signal,X Clear signal
-SLEP10 OS9 F$AProc Put process in active queue
- bra ZZZPRC Suspend process
-SLEP20 ldd R$X,U Get length of sleep
- beq SLEP50 Branch if indefinite
- subd #1 count current tick
- std R$X,U update count
- beq SLEP10 branch if done
- pshs X,U Save process & register ptr
- ldx #D.SProcQ-P$Queue Fake process ptr
-SLEP30 leay 0,X Copy process ptr
- ldx P$Queue,X Get next process
- beq SLEP40 Branch if end of queue
- pshs D Save sleep time
- lda P$State,X Get process status
- bita #TimSleep In timed sleep?
- puls D Retrieve sleep time
- beq SLEP40 Branch if not timed sleep
- ldu P$SP,X Get process stack ptr
- subd R$X,U Subtract sleep time
- bcc SLEP30 Branch if not greater
- addd R$X,U Fix sleep time
-SLEP40 puls X,U Retrieve process & register ptr
- std R$X,U Set time to sleep
- ldd P$Queue,Y Put process in queue
- stx P$Queue,Y
- std P$Queue,X
- lda P$State,X Set timed sleep status
- ora #TimSleep
- sta P$State,X
- ldx P$Queue,X Get next process ptr
- beq ZZZPRC
- lda P$State,X Get status
- bita #TimSleep In timed sleep?
- beq ZZZPRC Branch if not
- ldx P$SP,X Get stack ptr
- ldd R$X,X Get sleep time
- subd R$X,U Subtract new sleep
- std R$X,X Update sleep time
- bra ZZZPRC
-SLEP50 lda P$State,X Get status
- anda #$FF-TimSleep Set not timed sleep
- sta P$State,X
- ldd #D.SProcQ-P$Queue Fake process ptr
-SLEP60 tfr D,Y Copy process ptr
- ldd P$Queue,Y Get next process ptr
- bne SLEP60 Branch if one exists
- stx P$Queue,Y Link into queue
- std P$Queue,X
-*
-*      Fall Thru To Zzzprc
-*
-*****
-*
-*  Subroutine Zzzprc
-*
-* Deactivate Process, Start Another
-*
-ZZZPRC leay <WAKPRC,PCR Get wakeup address
- pshs Y Make new pc
- ldy D.PROC Get process ptr
- ldd P$SP,Y Get process stack
- ldx R$X,U Get sleep time (if any)
- pshs CC,D,DP,X,Y,U Make new stack
- sts P$SP,Y Note location
- OS9 F$NProc Start another process
-
-WAKPRC std P$SP,Y Restore previous stack
- stx R$X,U Return sleep time
- clrb CLEAR Carry
- rts
- page
-*****
-*
-*  Subroutine Intcpt
-*
-* Signal Intercept Handler
-*
-INTCPT ldx D.PROC Get process ptr
- ldd R$X,U Get vector
- std P$SigVec,X Save it
- ldd R$U,U Get data address
- std P$SigDat,X Save it
- clrb CLEAR Carry
- rts
-
 
 
 *****
