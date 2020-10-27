@@ -180,25 +180,25 @@ SVCTBL equ *
  fcb SysState+F$DelBit
  fdb SDBIT-*-2
  fcb F$GPrDsc
- fdb GPRDSC-*-2 M094A
+ fdb GPRDSC-*-2
  fcb F$GBlkMp
- fdb GBLKMP-*-2 M0963
+ fdb GBLKMP-*-2
  fcb F$GModDr
- fdb GMODDR-*-2 M097E
+ fdb GMODDR-*-2
  fcb F$CpyMem
- fdb CPYMEM-*-2 M09A8
- fcb F$User
- fdb USER-*-2 M09A0
+ fdb CPYMEM-*-2
+ fcb F$SUser
+ fdb SUSER-*-2
  fcb F$UnLoad
- fdb M0A03-*-2                ;00E6: 09 1B
+ fdb UNLOAD-*-2
  fcb SysState+F$Find64
- fdb M0A50-*-2                ;00E9: 09 65
+ fdb F64-*-2
  fcb SysState+F$All64
- fdb M0A73-*-2                ;00EC: 09 85
+ fdb A64-*-2
  fcb SysState+F$Ret64
- fdb M0AF4-*-2                ;00EF: 0A 03
+ fdb R64-*-2
  fcb SysState+F$GProcP
- fdb M0B24-*-2                ;00F2: 0A 30
+ fdb GPP-*-2
  fcb SysState+F$DelImg
  fdb M0B46-*-2                ;00F5: 0A 4F
  fcb SysState+F$AllPrc
@@ -207,7 +207,7 @@ SVCTBL equ *
  fdb DELPRC-*-2
  fcb F$MapBlk
  fdb M0B74-*-2                ;00FE: 0A 74
-M0100 fcb F$ClrBlk
+ fcb F$ClrBlk
  fdb CLRBLK M0BAE
  fcb F$DelRAM
  fdb M0BEB-*-2
@@ -591,7 +591,7 @@ DELPRC lda R$A,U Get process id
 WAIT ldx D.PROC Get process ptr
  lda P$CID,X Does process have children?
  beq WAIT30 Branch if not
-WAIT10 lbsr M0B2E Get process ptr
+WAIT10 lbsr GPROCP Get process ptr
  lda P$State,Y Get child's status
  bita #DEAD Is child dead?
  bne CHILDS Branch if so
@@ -636,7 +636,7 @@ CHILDS lda P$ID,Y Get process id
  leau ,Y Copy child process ptr
  leay P$CID-P$SID,X Fake sibling process ptr
  bra CHIL20
-CHIL10 lbsr M0B2E Get process ptr
+CHIL10 lbsr GPROCP Get process ptr
 CHIL20 lda P$SID,Y Is child next sibling?
  cmpa P$ID,U
  bne CHIL10 Branch if not
@@ -910,7 +910,7 @@ EXIT ldx D.PROC Get process ptr
 
 * Was Z0551
 EXIT20 clr P$SID,Y Clear sibling link
- lbsr M0B2E Get next process ptr
+ lbsr GPROCP Get next process ptr
  clr P$PID,Y Clear parent link
  lda P$State,Y Get process status
  bita #DEAD Is process dead?
@@ -931,7 +931,7 @@ EXIT25 lda P$SID,Y Get sibling id
  bne EXIT40 Branch if parent alive
  puls CC
  lda P$ID,Y Get process id
- lbsr DELPRC Delete process
+ lbsr DLPRC Delete process
  bra M05A2
 
 *****
@@ -1120,7 +1120,7 @@ SEND15 inca Get next process id
 *
 * Signal destination process
 *
-SENSUB lbsr M0B2E Get process ptr
+SENSUB lbsr GPROCP Get process ptr
  pshs U,Y,A,CC
  bcs SENSUBX
  tst R$B,U Is it unconditional abort signal?
@@ -1133,7 +1133,7 @@ SENSUB lbsr M0B2E Get process ptr
  beq SEND20
 
  ldb #E$IPrcID Err: illegal process id
- inc ,S SET saved carry (know it was clear from M0B2E)
+ inc ,S SET saved carry (know it was clear from GPROCP)
 SENSUBX lbra SEND75
 
 *
@@ -1155,7 +1155,7 @@ SEND30 lda P$State,Y Get process status
  beq SEND40 Branch if not
  deca Is it wake-up?
  beq SEND40 Branch if so
- inc ,S SET saved carry (know it was clear from M0B2E)
+ inc ,S SET saved carry (know it was clear from GPROCP)
  ldb #E$USigP Err: unprocessed signal pending
  bra SEND75
 
@@ -1359,7 +1359,7 @@ WAKPRC pshs X
 *
 * Was Z07A5
 SETPRI lda R$A,U Get process id
- lbsr M0B2E Get process ptr
+ lbsr GPROCP Get process ptr
  bcs SETPR20
  ldx D.PROC Get setting process ptr
  ldd P$USER,X Get setting user
@@ -1667,7 +1667,236 @@ FLOB40 std R$D,U Return starting bit number
  leas 9,S Return scratch
  rts
 
+ page
+*****
+*
+*  Subroutine GPrDsc
+*
+* Get Proces Descriptor copy
+*
+* Input: A = Requested process ID
+*        X = 512 byte buffer pointer
+* Output: None
+* Local: None
+* Global: None
+*
 * Was Z094A
+GPRDSC ldx D.PROC Current process
+ ldb P$Task,X Get task number
+ lda R$A,U Get required process ID
+ OS9 F$GProcP Get process ptr
+ bcs GPRDSC9
+ lda D.SysTsk Source task for move
+ leax ,Y Copy process ptr
+ ldy #P$Size
+ ldu R$X,U Get buffer ptr
+ OS9 F$Move
+GPRDSC9 rts
+
+ page
+*****
+*
+*  Subroutine GBlkMp
+*
+* Get system Block Map copy
+*
+* Input: X = 1024 byte buffer pointer
+* Output: D = Number of bytes per block (MMU block size dependent)
+*         Y = Size of system's memory block map
+* Local: None
+* Global: None
+*
+* Was Z0963
+GBLKMP ldd #DAT.BlSz GET MMU block size
+ std R$D,U Return it
+ ldd D.BlkMap+2 Block map end ptr
+ subd D.BlkMap GET blok map size
+ std R$Y,U Return it
+ tfr D,Y Byte count
+ lda D.SysTsk Source task
+ ldx D.PROC Current process
+ ldb P$Task,X Get dest task number
+ ldx D.BlkMap Source ptr
+ ldu R$X,U Get buffer ptr
+ OS9 F$Move
+ rts
+
+ page
+*****
+*
+*  Subroutine GModDr
+*
+* Get Module Directory copy
+*
+* Input: X = 2048 byte buffer pointer
+* Output: Y = end of copied module dir
+*         U = Start address of Module Directory in the system
+* Local: None
+* Global: None
+*
+* Was Z097E
+GMODDR ldd D.ModDir+2 Get module directory end
+ subd D.ModDir GET used module directory size
+ tfr D,Y
+ ldd D.ModEnd Get end of mod dir allocation
+ subd D.ModDir Get total size
+ ldx R$X,U Get buffer
+ leax D,X GET end of copied module dir
+ stx R$Y,U Return it
+ ldx D.ModDir GET start address of mod dir
+ stx R$U,U Return it
+ lda D.SysTsk Source task
+ ldx D.PROC Current process
+ ldb P$Task,X Get dest task number
+ ldx D.ModDir Source ptr
+ ldu R$X,U Get buffer ptr
+ OS9 F$Move
+ rts
+
+ page
+*****
+*
+*  Subroutine SUser
+*
+* Set User ID number
+*
+* Input: Y = Desired user ID number
+* Output: None
+* Local: None
+* Global: None
+*
+* Was Z09A0
+SUSER ldx D.PROC Current process
+ ldd R$Y,U GET desired user ID
+ std P$User,X
+ clrb
+ rts
+
+ page
+*****
+*
+*  Subroutine CpyMem
+*
+* Copy external Memory
+*
+* Input: D = DAT image ptr
+*        X = Offset in map to begin copy
+*        Y = Byte count
+*        U = Caller's destination buffer
+* Output: None
+* Local: None
+* Global: None
+*
+* Was Z09A8
+CPYMEM ldd R$Y,U GET byte count
+ beq CPYM40 Branch if nothing
+ addd R$U,U GET destination end ptr
+ bcs CPYM40 Branch if memory wrap
+ leas -DAT.ImSz,S Allocate temp DAT img
+ leay ,S GET temp ptr
+ pshs Y,D
+ ldx D.PROC Current process
+ ldb P$Task,X current DAT task
+ pshs B
+ leay P$DATImg,X Current DAT image
+ ldx R$D,U Get source DAT image
+ ldb #DAT.ImSz/2 Get copy count
+ pshs U,B
+ ldu 6,S Get temp ptr
+CPYM10 clra No offset
+ clrb
+ OS9 F$LDDDXY Get bytes from DAT image
+ std ,U++ Set bytes in temp image
+ leax 2,X
+ dec ,S More DAT image?
+ bne CPYM10 yes; continue
+ puls B,U Clean stack and restore reg ptr
+ ldx R$X,U Get source ptr
+ ldu R$U,U Get dest ptr
+ ldy 3,S Get temp DAT ptr
+ puls B Get source DAT task
+ bra CPYM30
+*
+* Wrap around DAT block boundary
+*
+CPYM20 leax -DAT.BlSz,X Back up one whole DAT block
+ leay 2,Y Next DAT entry
+*
+* Byte-by-byte copy
+*
+CPYM30 cmpx #DAT.BlSz Normalized index?
+ bhs CPYM20 no; wrap
+ OS9 F$LDAXY Get source byte
+ leax 1,X
+ exg X,U Swap pointers
+ OS9 F$STABX Save byte
+ leax 1,X
+ cmpx ,S More to copy?
+ exg X,U
+ bcs CPYM30
+ leas 4+DAT.ImSz,S Clean stack
+CPYM40 clrb
+ rts
+
+ page
+*****
+*
+*  Subroutine UnLoad
+*
+* Unlonk module by name
+*
+* Input: A = Module type
+*        X = Module name pointer
+* Output: X = Updated past name string
+* Local: None
+* Global: None
+*
+* Was Z0A03
+UNLOAD pshs U
+ lda R$A,U GET type
+ ldx D.PROC Current process
+ leay P$DATImg,X Current DAT image
+ ldx R$X,U GET name ptr
+ OS9 F$FModul Found module?
+ puls Y
+ bcs UNLD50 no; exit
+ stx R$X,Y Update name ptr
+ ldx MD$Link,U Already orphaned?
+ beq UNLD10 yes; skip
+ leax -1,X Decrement ref count
+ stx MD$Link,U Update it
+ bne UNLD40 Branch if still referenced
+UNLD10 cmpa #FlMgr File manager, driver, or descriptor?
+ blo UNLD30 no; skip
+ clra
+ ldx [MD$MPDAT,U] Get first block of DAT image
+ ldy D.SysDAT Point to system DAT
+UNLD20 adda #2 Next DAT block
+ cmpa #DAT.ImSz More DAT?
+ bhs UNLD30
+ cmpx A,Y Is module in the system image?
+ bne UNLD20 no; keep looking
+ asla Convert to block base ptr
+ asla
+ ifge (DAT.BlSz-$1000)
+ asla
+ ifge (DAT.BlSz-$2000)
+ asla
+ endc
+ endc
+ clrb
+ addd MD$MPtr,U GET pointer to module
+ tfr D,X
+ OS9 F$IODel Clean up unlinked descriptor, driver, file mgr
+ bcc UNLD30
+ ldx MD$Link,U Failed; restore ref count
+ leax 1,X
+ stx MD$Link,U
+ bra UNLD50
+
+UNLD30 lbsr M01D5 Finish unlinking
+UNLD40 clrb No error
+UNLD50 rts
 
  page
 ***************
@@ -1680,6 +1909,7 @@ FLOB40 std R$D,U Return starting bit number
 *          Cc=Set If Pd Is Not Owned By Caller
 * Destroys: B,Cc
 *
+* Was Z0A50
 F64 lda R$A,U Get block number
  ldx R$X,U Get block ptr
  bsr FINDPD Find block
@@ -1702,6 +1932,7 @@ FINDPD pshs D Save registers
  bne FINDP9 Allocated pd, good!
 FPDERR coma ERROR - return carry set
 FINDP9 puls D,PC Return
+
  page
 ***************
 * Aloc64
@@ -1765,8 +1996,8 @@ ALCPD2 tst A,X Search for an unused pdb
  inca SKIP To next
  cmpa #PDSIZE All tried?
  blo ALCPD2 ..no; keep looking
+ comb RETURN Carry set - error
  ldb #E$PthFul No available path
- coma RETURN Carry set - error
  bra ALCPD9 Return
 
 ALCPD3 pshs A,X
@@ -1799,7 +2030,7 @@ ALCPD9 puls X,U,PC Return carry clear
 ALCPDR leas 3,S Return not enough memory error
  puls X,U,PC Return
 
-
+ page
 ***************
 * Rtrn64
 *   Return Path Descriptor To Free Status
@@ -1811,8 +2042,10 @@ ALCPDR leas 3,S Return not enough memory error
 *
 R64 lda R$A,U Get block number
  ldx R$X,U Get block ptr
-RTRN64 pshs D,X,Y,U Save registers
+ pshs D,X,Y,U Save registers
  clrb
+ tsta Anything to return?
+ beq RTRNP99 no; skip
  lsra
  rorb
  lsra PATH #
@@ -1834,8 +2067,48 @@ RTRNP1 tst D,U Pd in use?
  lda 0,S
  clr A,X Mark pd unused
 RTRNP9 clr ,S+ Return scratch with carry clear
- puls D,X,Y,U,PC Return to caller
+RTRNP99 puls D,X,Y,U,PC Return to caller
 
+ page
+*****
+*
+*  Subroutine GProcP
+*
+* Get Process Pointer
+*
+* Input: A = Process ID
+* Output: Y = Pointer to process descriptor
+* Local: None
+* Global: None
+*
+* Was Z0B24
+GPP lda R$A,U GET process ID
+ bsr GPROCP Point to process
+ bcs GPP9 Skip if not found
+ sty R$Y,U Return it
+GPP9 rts
+
+*****
+*
+* Get process pointer from process ID in A
+*
+* Was Z0B2E
+GPROCP pshs X,D
+ ldb ,S Is process zero?
+ beq M0B40 yes; special
+ ldx D.PrcDBT Base address of proc desc block table
+ abx
+ lda ,X Get starting block of process
+ beq M0B40 Branch if block zero
+ clrb Convert to proc ptr
+ tfr D,Y
+ puls D,X,PC
+M0B40 puls D,X
+ comb RETURN Carry set - error
+ ldb #E$BPrcID Bad process ID
+ rts
+
+* Was Z0B46
 
 
  ifne 0
@@ -2568,15 +2841,6 @@ BADCHN pshs B Save error code
  stb P$Prior,X
  comb
  puls B,PC
-
-
-
-* fcb F$Find64+$80
-* fdb F64-*-2
-* fcb F$ALL64+$80
-* fdb A64-*-2
-* fcb F$Ret64+$80
-* fdb R64-*-2
 
 
  ldx D.PrcDBT Get process block ptr
