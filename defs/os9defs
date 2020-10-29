@@ -1,6 +1,24 @@
  opt -l
  ttl OS-9 System Symbol Definitions
- pag
+
+***************
+* Edition History
+
+*   Date    Changes Made
+* -------- ----------------------------------------------
+* 85/08/29 Fixed DT.SBF/NFM values to 3/4                Kmz
+* 85/09/01 Added SS.FDInf, SS.Attr to accept 68K request
+*                thru NET.                               Kmz
+* 85/09/03 Eliminated E$BPrcID, made Error #238 become
+*                E$DNE for 68000 compatability.      Kmz/rfd
+* 86/04/15 F$AlHRam System call added for COCO           MGH
+* 86/09/08 F$Alarm for COCO Clock Module                 MGH
+* 86/09/17 SS.Tone For COCO                              MGH
+* 86/09/23 Added F$NMLink and F$NMLoad for COCO          MGH
+* 86/09/30 added Reserved User $70 to $7f in sytem calls MGH
+* 86/09/30 Created Color Computer 3 Version of OS9Defs   MGH
+
+ page
 ************************************************************
 *
 *     System Service Request Code Definitions
@@ -36,6 +54,10 @@ F$GModDr rmb 1 get Module Directory copy
 F$CpyMem rmb 1 Copy External Memory
 F$SUser rmb 1 Set User ID number
 F$UnLoad rmb 1 Unlink Module by name
+F$Alarm rmb 1 Color Computer Alarm Call
+ rmb 2 reserved - For overlap of other systems
+F$NMLink rmb 1 Color Computer NonMapping Link
+F$NMLoad rmb 1 Color Computer NonMapping Load
  ORG $27 Beginning of System Reserved Calls
 F$VIRQ rmb 1 Install/Delete Virtual IRQ
 F$SRqMem rmb 1 System Memory Request
@@ -67,7 +89,7 @@ F$SetTsk rmb 1 Set Process Task DAT registers
 F$ResTsk rmb 1 Reserve Task number
 F$RelTsk rmb 1 Release Task number
 F$DATLog rmb 1 Convert DAT Block/Offset to Logical
-F$DATTmp rmb 1 Make temporary DAT image
+F$DATTmp rmb 1 Make temporary DAT image (Obsolete)
 F$LDAXY rmb 1 Load A [X,[Y]]
 F$LDAXYP rmb 1 Load A [X+,[Y]]
 F$LDDDXY rmb 1 Load D [D+X,[Y]]
@@ -82,20 +104,12 @@ F$ClrBlk rmb 1 Clear Specific Block
 F$DelRAM rmb 1 Deallocate RAM blocks
 F$GCMDir rmb 1 Pack module directory
 F$AlHRam rmb 1 Allocate HIGH RAM Blocks
-
- pag
-***********************************************************
 *
-*     VIRQ packet format
+* Numbers $70 through $7F are reserved for user definitions
 *
- ORG 0
-VI.Cnt rmb 2 count down counter
-VI.Rst rmb 2 reset value for counter
-VI.Stat rmb 1 status byte
-
-VI.IFlag equ %00000001 status byte virq flag
-
- pag
+ ORG $70
+ rmb 16 Reserved for user definition
+ page
 ************************************************************
 *
 *     I/O Service Request Code Definitions
@@ -133,7 +147,10 @@ PWRIT. equ %00010000
 PEXEC. equ %00100000
 SHARE. equ %01000000
 DIR. equ %10000000
- pag
+ ifeq CPUType-Color
+ISIZ. equ %00100000
+ endc
+
 ************************************************************
 *
 *     Signal Codes
@@ -143,65 +160,91 @@ S$Kill rmb 1 Non-Interceptable Abort
 S$Wake rmb 1 Wake-up Sleeping Process
 S$Abort rmb 1 Keyboard Abort
 S$Intrpt rmb 1 Keyboard Interrupt
+ ifeq CPUType-Color
+S$Window rmb 1 Window Change
+ endc
 
-
-
+ page
 ************************************************************
 *
 *     Status Codes for GetStat/PutStat
 *
  ORG 0
-SS.Opt rmb 1 Read/Write PD Options
+SS.Opt   rmb 1 Read/Write PD Options
 SS.Ready rmb 1 Check for Device Ready
-SS.Size rmb 1 Read/Write File Size
+SS.Size  rmb 1 Read/Write File Size
 SS.Reset rmb 1 Device Restore
-SS.WTrk rmb 1 Device Write Track
-SS.Pos rmb 1 Get File Current Position
-SS.EOF rmb 1 Test for End of File
-SS.Link rmb 1 Link to Status routines
+SS.WTrk  rmb 1 Device Write Track
+SS.Pos   rmb 1 Get File Current Position
+SS.EOF   rmb 1 Test for End of File
+SS.Link  rmb 1 Link to Status routines
 SS.ULink rmb 1 Unlink Status routines
-SS.Feed rmb 1 issue form feed
-SS.Frz rmb 1 Freeze DD. information
-SS.SPT rmb 1 Set DD.TKS to given value
-SS.SQD rmb 1 Sequence down hard disk
-SS.DCmd rmb 1 Send direct command to disk
+SS.Feed  rmb 1 issue form feed
+SS.Frz   rmb 1 Freeze DD. information
+SS.SPT   rmb 1 Set DD.TKS to given value
+SS.SQD   rmb 1 Sequence down hard disk
+SS.DCmd  rmb 1 Send direct command to disk
 SS.DevNm rmb 1 Return Device name (32-bytes at [X])
-SS.FD rmb 1 Return File Descriptor (Y-bytes at [X])
+SS.FD    rmb 1 Return File Descriptor (Y-bytes at [X])
 SS.Ticks rmb 1 Set Lockout honor duration
-SS.Lock rmb 1 Lock/Release record
+SS.Lock  rmb 1 Lock/Release record
 SS.DStat rmb 1 Return Display Status (CoCo)
-SS.Joy rmb 1 Return Joystick Value (CoCo)
+SS.Joy   rmb 1 Return Joystick Value (CoCo)
 SS.BlkRd rmb 1 Block Read
 SS.BlkWr rmb 1 Block Write
 SS.Reten rmb 1 Retension cycle
-SS.WFM rmb 1 Write File Mark
-SS.RFM rmb 1 Read past File Mark
-SS.ELog rmb 1 Read Error Log
-SS.SSig rmb 1 Send signal on data ready
+SS.WFM   rmb 1 Write File Mark
+SS.RFM   rmb 1 Read past File Mark
+SS.ELog  rmb 1 Read Error Log
+SS.SSig  rmb 1 Send signal on data ready
 SS.Relea rmb 1 Release device
-SS.AlfaS rmb 1 Return Alfa Display Status (CoCo)
+SS.AlfaS rmb 1 Return Alfa Display Status (CoCo, SCF/GetStat )
+SS.Attr  equ SS.AlfaS to serve 68K/RBF/SetStat only, thru NET
 SS.Break rmb 1 Send break signal out acia
 SS.RsBit rmb 1 Reserve bitmap sector (do not allocate in) LSB(X)=sct#
- rmb 1 reserved
- rmb 4 reserve $20-$23 for Japanese version (Hoshi)
+         rmb 1 reserved
+SS.FDInf equ $20 to serve 68K/RBF/GetStat only, thru NET
+         rmb 4 reserve $20-$23 for Japanese version (Hoshi)
 SS.SetMF rmb 1 reserve $24 for Gimix G68 (Flex compatability?)
 SS.Cursr rmb 1 Cursor information for COCO
 SS.ScSiz rmb 1 Return screen size for COCO
 SS.KySns rmb 1 Getstat/Putstat for COCO keyboard
 SS.ComSt rmb 1 Getstat/Putstat for Baud/Parity
-SS.Open rmb 1 Putstat to tell driver a path was opened
+SS.Open  rmb 1 Putstat to tell driver a path was opened
 SS.Close rmb 1 Putstat to tell driver a path was closed
 SS.HngUp rmb 1 Putstat to tell driver to hangup phone
 
  ifeq CPUType-Color
 * System Specific and User defined codes above $80
- org 80 
+         org $80 
 SS.AAGBf rmb 1 Putstat to Allocate Additional Graphic Buffer
 SS.SLGBf rmb 1 Putstat to Select a different Graphic Buffer
+SS.Mount rmb 1 Network 4 Mount Setstat
+SS.RdNet rmb 1 Read Raw Sector from Network 4 Omnidrive
+SS.MpGPB rmb 1 Putstat to request a Get/Put Buffer be mapped in workspace
+SS.Slots rmb 1 Network 4 slots? getstat
+SS.WnSet rmb 1 Set up High Level Windowing Information
+SS.MnSel rmb 1 Request High level Menu Handler take determine next event
+SS.SBar rmb 1 Putstat to set position block on Window scroll bars
+SS.Mouse rmb 1 Return Mouse information packet (COCO)
+SS.MsSig rmb 1 Putstat to tell driver to send signal on mouse event
+SS.AScrn rmb 1 Allocate a screen for application poking
+SS.DScrn rmb 1 Display a screen allocated by SS.AScrn
+SS.FScrn rmb 1 Free a screen allocated by SS.AScrn
+SS.PScrn rmb 1 Polymorph Screen into different screen Type
+         rmb 2 Reserved
+SS.Palet rmb 1 Return palette information
+SS.Montr rmb 1 Get and Set Monitor Type
+SS.ScTyp rmb 1 Get screen type information
+SS.GIP rmb 1 Global Input Parameters (SetStat)
+SS.UMBar rmb 1 update menu bar (SetStat)
+SS.FBRgs rmb 1 return color registers (GetStat)
+SS.DfPal rmb 1 set/return default palette registers (GetStat/SetStat)
+SS.Tone rmb 1 Generate a tone using 6 bit sound
  endc
 
- TTL Structure Formats
- pag
+ ttl Structure Formats
+ page
 ************************************************************
 *
 *     Module Definitions
@@ -251,7 +294,8 @@ InitStr rmb 2 Initial Module Name
 SysStr rmb 2 System Device Name
 StdStr rmb 2 Standard I/O Pathlist
 BootStr rmb 2 Bootstrap Module name
- pag
+ProtFlag rmb 1 Write protect enable flag
+ page
 ************************************************************
 *
 *     Module Field Definitions
@@ -299,18 +343,38 @@ RevsMask equ %00001111 Revision Level Field
 *   Attribute Flags
 *
 ReEnt equ %10000000 Re-Entrant Module
+Modprot equ %01000000 Gimix Module protection bit
+*                     0=protected, 1=write enable
+
 *
 *   Device Type Values
 *
 DT.SCF equ 0 Sequential Character File Type
 DT.RBF equ 1 Random Block File Type
 DT.Pipe equ 2 Pipe File Type
+DT.SBF equ 3
+DT.NFM equ 4 Network File Manager
+
 *
 *   CRC Result Constant
 *
 CRCCon1 equ $80
 CRCCon23 equ $0FE3
- pag
+
+
+ page
+***********************************************************
+*
+*     VIRQ packet format
+*
+ ORG 0
+Vi.Cnt rmb 2 count down counter
+Vi.Rst rmb 2 reset value for counter
+Vi.Stat rmb 1 status byte
+
+Vi.IFlag equ %00000001 status byte virq flag
+
+ page
 ************************************************************
 *
 *   Machine Characteristics Definitions
@@ -342,10 +406,31 @@ false equ 0 useful name
 
 
  ttl Error Code Definitions
-  pag
+  page
 ************************************************************
 *
 *     Error Code Definitions
+*
+
+ ifeq (CPUType-Color)
+*
+* System Dependent Error Codes
+*
+ org 186
+E$StkOvf rmb 1 Stack overflow
+E$IllArg rmb 1 Illegal argument
+ rmb 1 reserved
+E$ICoord rmb 1 Illegal coordinates
+E$Bug rmb 1 Bug (should never be returned)
+E$BufSiz rmb 1 Buffer size is too small
+E$IllCmd rmb 1 Illegal command
+E$TblFul rmb 1 Screen or window table is full
+E$BadBuf rmb 1 Bad/Undefined buffer number
+E$IWDef rmb 1 Illegal window definition
+E$WUndef rmb 1 Window undefined
+ endc
+*
+* Standard OS-9 Error Codes
 *
  org 200
 E$PthFul rmb 1 Path Table full
@@ -373,6 +458,7 @@ E$MNF rmb 1 Module Not Found
  rmb 1
 E$DelSP rmb 1 Deleting Stack Pointer memory
 E$IPrcID rmb 1 Illegal Process ID
+E$BPrcID equ E$IPrcID Bad Process ID (formerly #238)
  rmb 1
 E$NoChld rmb 1 No Children
 E$ISWI rmb 1 Illegal SWI code
@@ -386,8 +472,8 @@ E$NEMod rmb 1 Non Existing Module
 
 E$BNam rmb 1 Bad Name
 E$BMHP rmb 1 (bad module header parity)
-E$NoRam rmb 1 No Ram Available
-E$BPrcID rmb 1 Bad Process ID
+E$NoRam rmb 1 No (System) Ram Available
+E$DNE rmb 1 Directory not empty
 E$NoTask rmb 1 No available Task number
 
  rmb $F0-. reserved
@@ -406,6 +492,7 @@ E$DevBsy rmb 1 Device Busy
 E$DIDC rmb 1 Disk ID Change
 E$Lock rmb 1 Record is busy (locked out)
 E$Share rmb 1 Non-sharable file busy
+E$DeadLk rmb 1 I/O Deadlock error
 
  opt l
 

@@ -65,7 +65,7 @@ OS9Ent leay SVCTBL,PCR Get ptr to service routine table
  ldd MaxMem+0,U Get max free mem
  lsra Convert to a block number
  rorb
-M0024 lsra
+ lsra
  rorb
  lsra
  rorb
@@ -200,21 +200,21 @@ SVCTBL equ *
  fcb SysState+F$GProcP
  fdb GPP-*-2
  fcb SysState+F$DelImg
- fdb M0B46-*-2                ;00F5: 0A 4F
+ fdb DELIMG-*-2
  fcb SysState+F$AllPrc
  fdb ALLPRC-*-2
  fcb SysState+F$DelPrc
  fdb DELPRC-*-2
  fcb F$MapBlk
- fdb M0B74-*-2                ;00FE: 0A 74
+ fdb MAPBLK-*-2
  fcb F$ClrBlk
- fdb CLRBLK M0BAE
+ fdb CLRBLK-*-2
  fcb F$DelRAM
- fdb M0BEB-*-2
- fcb SysState+F$SSvc
- fdb M0C13
+ fdb DELRAM-*-2
+ fcb SysState+F$GCMDir
+ fdb M0C13-*-2              ;Z0C13
  fcb IOAddr
- fdb IOHOOK-*-2 M0112
+ fdb IOHOOK-*-2
  fcb $80
 
  ttl BOOTSTRAP Routines
@@ -2108,8 +2108,187 @@ M0B40 puls D,X
  ldb #E$BPrcID Bad process ID
  rts
 
+ page
+***************
+* DelImg
+*   Deallocate Image RAM blocks
+*
+* Passed: (A)=Beginning block number
+*         (B)=Block count
+*         (X)=Procss descriptor pointer
+* Returns: None
+* Destroys: Cc
+*
 * Was Z0B46
+DELIMG ldx R$X,U Get process ptr
+ ldd R$D,U Get block number and count
+ leau P$DATImg,X Get DAT image ptr
+ asla Two bytes per entry
+ leau A,U Get 1st block info ptr
+ clra
+ tfr D,Y Get block count
+ pshs X
+DLIMG10 ldd ,U Get DAT entry
+ addd D.BlkMap
+ tfr D,X Get block map ptr
+ lda ,X Get block map entry
+ anda #255-RAMInUse No longer in use
+ sta ,X Set block map entry
+ ldd #DAT.Free Mark as free in DAT image
+ std ,U++
+ leay -1,Y Count down
+ bne DLIMG10 Branch if more
+ puls X Get process ptr
+ lda P$State,X
+ ora #IMGCHG Matk image as changed
+ sta P$State,X
+ clrb
+ rts
+ 
+ page
+***************
+* MapBlk
+*   Map specific block
+*
+* Passed: (B)=Number of blocks
+*         (X)=Beginning block number
+* Returns: None
+* Destroys: Cc
+*
+* Was Z0B74
+MAPBLK lda R$B,U Get block count
+ beq IBAERR Error if none
+ cmpa #DAT.BlCt
+ bhi IBAERR Error if too many
+ leas -DAT.ImSz,S Allocate temp DAT img
+ ldx R$X,U Get block number (two byte entry)
+ leay ,S GET temp ptr
+MAPBK10 stx ,Y++ Fill temp DAT
+ leax 1,X NEXT block
+ deca Count down
+ bne MAPBK10 Branch if more
+ ldb R$B,U Get block count
+ ldx D.PROC Current process
+ leay P$DATImg,X Get DAT img ptr
+ OS9 F$FreeHB Room for new blocks?
+ bcs MAPBK20 Error if not
+ pshs D Save count and start
+ asla Convert to block base ptr
+ asla
+ asla
+ ifge (DAT.BlSz-$1000)
+ asla
+ ifge (DAT.BlSz-$2000)
+ asla
+ endc
+ endc
+ clrb
+ std R$U,U Return it
+ puls D Get count and start
+ leau ,S Get temp DAT ptr
+ OS9 F$SetImg SET new blocks
+MAPBK20 leas DAT.ImSz,S Clean stack
+ rts
 
+IBAERR comb
+ ldb #E$IBA Err: illegal block address
+ rts
+
+ page
+***************
+* ClrBlk
+*   Clear specific block
+*
+* Passed: (B)=Number of blocks
+*         (U)=Address of first block
+* Returns: None
+* Destroys: Cc
+*
+* Was Z0BAE
+CLRBLK ldb R$B,U Get block count
+ beq CLRBK30 Error if none
+ ldd R$U,U Get DAT img block ptr
+ tstb Valid block start?
+ bne IBAERR Error if no
+ bita #DAT.BlSz/256-1 Valid block start?
+ bne IBAERR Error if no
+ ldx D.PROC Current process
+ lda P$SP,X Deallocating stack?
+ anda #256-(DAT.BlSz/256) GET block address of process stack
+ suba R$U,U
+ bcs CLRBK10 Skip check if clearing above stack
+
+ lsra Convert to block offset
+ lsra
+ lsra
+ ifge (DAT.BlSz-$1000)
+ lsra
+ ifge (DAT.BlSz-$2000)
+ lsra
+ endc
+ endc
+ cmpa R$B,U Clearing too many?
+ bcs IBAERR Error if yes
+
+CLRBK10 lda P$State,X
+ ora #IMGCHG Matk image as changed
+ sta P$State,X
+ lda R$U,U MSB of block address
+ lsra Convert to DAT img offset
+ lsra
+ ifge (DAT.BlSz-$1000)
+ lsra
+ ifge (DAT.BlSz-$2000)
+ lsra
+ endc
+ endc
+ leay P$DATImg,X Get DAT img ptr
+ leay A,Y Get DAT entry ptr
+ ldb R$B,U Get count
+ ldx #DAT.Free Mark as free in DAT img
+CLRBK20 stx ,Y++ Unmap block
+ decb Count down
+ bne CLRBK20 Branch if more
+CLRBK30 clrb
+ rts
+
+
+
+ page
+***************
+* DelRam
+*   Deallocate RAM blocks
+*
+* Passed: (B)=Number of blocks
+*         (X)=Starting block number
+* Returns: (B)=Actual number of blocks
+* Destroys: Cc
+*
+* Was Z0BEB
+DELRAM ldb R$B,U Get block count
+ beq DLRAM30 Skip if none
+ ldd D.BlkMap+2 GET end of block map
+ subd D.BlkMap GET length of block map
+ subd R$X,U Start too high?
+ bls DLRAM30 yes; skip
+ tsta More than 256 entries left?
+ bne DLRAM10 yes; always OK
+ cmpb R$B,U Deallocating too many?
+ bhs DLRAM10 no; ok
+ stb R$B,U Clear only what's available
+DLRAM10 ldx D.BlkMap Block map ptr
+ ldd R$X,U Get starting block
+ leax D,X Get DAT img ptr
+ ldb R$B,U GET Count
+DLRAM20 lda ,X Get block map entry
+ anda #255-RAMInUse No longer in use
+ sta ,X+ Set block map entry
+ decb Count down
+ bne DLRAM20 Branch if more
+DLRAM30 clrb
+ rts
+
+ 
 
  ifne 0
 
