@@ -1,5 +1,5 @@
  opt l
- nam CoCo 2.00.00 FD-500 controller boot source
+ nam CoCo Level II 2.00.00 FD-500 controller boot source
 
  opt -c
 
@@ -38,14 +38,14 @@
  mod BTEND,BTNAM,SYSTM+OBJCT,REENT+1,BTENT,BTSTA
 BTNAM fcs "Boot"
 
- fcb 1 Edition telltale byte
+ fcb 4 Edition telltale byte
 *******************
 * Revision History
 * edition 0: prehistoric
 * edition 1: all use statements converted to use defsfile
 *            copyright removed from object file
 *            disktype set Dc3 added
-* edition ?: backported to CoCo 2.00.00
+* edition 4: backported to CoCo Level II 2.00.00
 *******************
 
  pag
@@ -59,6 +59,10 @@ V.DRV rmb 1 Drive number
 V.TMP rmb 1 Temporary save byte
 V.BUF rmb 2 Local buffer addr
 V.TRCK rmb 1 Current track
+V.FMT rmb 1 Format of boot disk
+V.TKS rmb 1 Sectors per track of boot disk
+V.TOT rmb 2 Total sectors of boot disk
+V.SIDES rmb 1 Number of sized of boot disk
 BTSTA equ . Total static requirement
 
 
@@ -114,8 +118,7 @@ INILUP pshs a
  decb
  bne INILUP
  tfr s,u Point "u" to static
- ldx #DPORT Point to controller addr
- leax DP.CmdR,X Address of command register
+ ldx #DPORT+DP.CmdR Address of command register
  lda #F.Typ1
  sta 0,x Inz controller chip
  lbsr DELAY1 Wait for 1771
@@ -124,11 +127,9 @@ INILUP pshs a
  sta V.TRCK,U Inz to high track count
 
  leax READNMI,PCR hook NMI for halt
- stx VV.NMI+1
- lda #$7E jmp opcode
- sta VV.NMI+0
+ stx D.NMI
 
- lda #MotorOn turn on disk motors
+ lda #SelDrv0 turn on disk motors, drive 0
  sta DPort+DP.Ctrl
  ldd #MotorDly spin up delay
 SelDly nop
@@ -149,31 +150,41 @@ SelDly nop
 *          (Y) Unchanged
 *          (U) Unchanged
 *
-LBOOT pshs D,X,U Save registers
- clra
- clrb
- ldy #1
- ldx D.FMBM
- ldu D.FMBM+2
- OS9 F$SchBit Search for buffer spot
+LBOOT pshs D,X,Y,U Save registers
+ ldd #1 Get a sector buffer
+ OS9 F$SRqMem
  bcs BOOTE1 Problem no mem
- exg a,b Convert page no. to addr
- ldu 4,s Restore "u"
+ tfr U,D Get mem ptr
+ ldu 6,S Get global storage
  std V.BUF,u Save buffer addr for use
  clrb
  ldx #0 Get sector zero
  bsr READSK
  bcs BOOTE1 Branch if can't
+ ldd DD.TOT+1,Y Get disk size
+ std V.TOT,U
+ lda DD.FMT,Y Get disk format
+ sta V.FMT,U
+ anda #1 How many sides?
+ sta V.SIDES,U
+ lda DD.TKS,Y Get track size in sectors
+ sta V.TKS,U
  ldd DD.BSZ,Y Get bootstrap size
  std 0,S Return to caller
- OS9 F$SRqMem Get boot memory
+ ldx DD.BT+1,Y Get boot sector
+ pshs X
+ ldd #256 Sector buffer size
+ ldu V.BUF,U Sector buffer addr
+ OS9 F$SRtMem Give back the sector buffer
+ ldd 2,S Get back the boot size
+ OS9 F$BtMem Get boot memory
+ puls X Recover boot sector
  bcs BOOTE1 Branch if none
  stu 2,S Return to caller
  ldu 4,S Get static storage
- ldx 2,s Get mem addr
- stx V.BUF,u
- ldx DD.BT+1,Y Get boot sector
- ldd DD.BSZ,Y Get boot size
+ ldd 2,s Get mem addr
+ std V.BUF,u
+ ldd ,S Get boot size
  beq BOOT2
 BOOT1 pshs D,X Save size, sector number
  clrb
@@ -191,7 +202,8 @@ BOOT2 clrb CLEAR Carry
 
 BOOTER leas 4,S Return scratch
 BOOTE1 leas 2,S Return scratch
-Bootz puls x,u
+Bootz sta DAT.Fast Set CPU to 1.79 MHz
+ puls x,y,u
  leas BTSTA,s De-allocate static fm stack
  rts
  pag
