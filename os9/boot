@@ -61,8 +61,9 @@ V.BUF rmb 2 Local buffer addr
 V.TRCK rmb 1 Current track
 V.FMT rmb 1 Format of boot disk
 V.TKS rmb 1 Sectors per track of boot disk
-V.TOT rmb 2 Total sectors of boot disk
-V.SIDES rmb 1 Number of sized of boot disk
+V.TOT rmb 1 Total sectors of boot disk (should be RMB 2)
+V.SIDES rmb 1 Non-zero if double-sided
+V.SIDE rmb 1 Current side of disk, for sector math
 BTSTA equ . Total static requirement
 
 
@@ -95,6 +96,7 @@ MotorDly set 50000 disk select delay
 MotorOn set %00001000 motors on
 RddDrv0 set %00111001 select drive 0, DD, precomp
 SelDrv0 set %00001001 select drive 0
+IdleDrv0 set %00101001 select drive 0, double density
 HaltDrv0 set %10111001 enable halt on drive 0
 SPT set 18
 
@@ -181,8 +183,8 @@ LBOOT pshs D,X,Y,U Save registers
  puls X Recover boot sector
  bcs BOOTE1 Branch if none
  stu 2,S Return to caller
- ldu 4,S Get static storage
- ldd 2,s Get mem addr
+ ldu 6,S Get static storage
+ ldd 2,S Get mem addr
  std V.BUF,u
  ldd ,S Get boot size
  beq BOOT2
@@ -220,7 +222,8 @@ Bootz sta DAT.Fast Set CPU to 1.79 MHz
 *        Issuing The Restore.  As Suggested In The
 *        Application Notes.
 *
-RESTOR clr V.Drv,u
+RESTOR lda #IdleDrv0 Idle drive 0
+ sta V.Drv,u
  clr V.TRCK,U Old track = 0
  lda #5 Repeat five times
  lbsr RESTR2 Issue command, delay & wait for done.
@@ -271,16 +274,20 @@ READSC bsr PHYSIC Move head to track
  ldy #-1
  ldb #F.READ Read sector command
  stb DPort+DP.CmdR
- ldb #RddDrv0 Drive 0, DD, precomp
- stb DPort+DP.Ctrl
+ ldb V.DRV,U Get correct drive and attributes
+M00FC orb #$30 turn on DD, precomp
+ tst V.SIDE,U on second side?
+M0100 beq M0104 no; skip
+ orb #$40 turn on side select (DRIVE 4)
+M0104 stb DPort+DP.Ctrl
  lbsr DELAY1
- ldb #HaltDrv0 enable halting
+ orb #$80 enable halting
  lda #%00000010 poll data request bit
 READSC1 bita DPort+DP.CmdR
  bne READS2 data is ready
 READSC2 leay -1,y timeout
  bne READSC1
- lda #SelDrv0
+ lda V.DRV,U idle drive 0
  sta DPort+DP.Ctrl
  puls y
  bra RDERR
@@ -317,16 +324,31 @@ RDERR comb
 *  Error:  B = Error Code, W/Carry Set
 *
 
-PHYSIC clr V.DRV,u
+PHYSIC lda #SelDrv0
+ sta V.DRV,U
+ clr V.SIDE,u start on first side
  tfr X,D Logical sector (os-9)
  cmpd #0 Logical sector zero?
  beq PHYSC7 ..yes; skip conversion.
  clr ,-s alloc temp
+ tst V.SIDES,U double-sided?
+ beq PHYSC4S no; use single-sided math
  bra PHYSC4
-PHYSC3 inc 0,S
-PHYSC4 subd #SPT sectors per track
+* Double-sided
+PHYSC3 com V.SIDE,U Switch sides
+ bne PHYSC4 Skip track inc if side 1
+ inc 0,S
+PHYSC4 subb V.TKS,U sectors per track
+ sbca #0
  bcc PHYSC3 Repeat until less than 1 trk
-PHYSC5 addb #SPT Add back for sector number
+ bra PHYSC5
+* Single-sided
+PHYSC3S inc ,S Next track
+PHYSC4S subb V.TKS,U sectors per track
+ sbca #0
+ bcc PHYSC3S
+
+PHYSC5 addb #SPT Add back for sector number (Should be V.TKS?)
  puls A Desired track.
 PHYSC7 equ *
 
@@ -404,7 +426,7 @@ WCR02 ldb DPort+DP.CmdR Get status
  bne WCR02 ..yes; wait for it.
  rts
 
-WCR lda #SelDrv0
+WCR lda V.DRV,U
  sta DPort+DP.Ctrl Select drive
  stb DPort+DP.CmdR Issue command
  rts
@@ -413,6 +435,31 @@ DELAY bsr WCR
 DELAY1 lbsr DELAY2
 DELAY2 lbsr DELAY4
 DELAY4 rts
+
+*
+* Generate Rtses to $FFE0
+*
+ ifle *-$19D
+ fcc /9999999999999999/
+ endc
+ ifle *-$1AD
+ fcc /9999999999999999/
+ endc
+ ifle *-$1BD
+ fcc /9999999999999999/
+ endc
+ ifle *-$1C5
+ fcc /99999999/
+ endc
+ ifle *-$1C9
+ fcc /9999/
+ endc
+ ifle *-$1CB
+ fcc /99/
+ endc
+ ifle *-$1CC
+ fcc /9/
+ endc
 
  emod
 
