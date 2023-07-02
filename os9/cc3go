@@ -101,26 +101,25 @@ NOHD pshs U,Y
  OS9 F$ID Get proc id
  bcs CLDERR
  
-* Initialize process memory map
- LEAX ,U 
- OS9 F$GPrDsc 
- BCS CLDERR 
- LEAY ,U 
- LDX #0 
- LDB #1 
- OS9 F$MapBlk 
- BCS CLDERR 
- LDA #$55 warm start sentinel 
- STA $71,U 
- LDD $4A,U 
- LEAU D,U 
- LEAU $20,U 
- LEAY $20,Y 
- LDB #$0F 
-Z0151 LDA B,Y 
- STA B,U 
- DECB 
- BPL Z0151 
+ leax ,U 
+ OS9 F$GPrDsc Get process descriptor copy
+ bcs CLDERR 
+ leay ,U 
+ ldx #0 Block number
+ ldb #1 Count
+ OS9 F$MapBlk Point U to mapped "direct page"
+ bcs CLDERR 
+ lda #$55 warm start sentinel 
+ sta D.CBStrt,U 
+ ldd D.SysPrc,U 
+ leau D,U Mapped version of system process ptr
+ leau P$DIO,U Copy default paths
+ leay P$DIO,Y 
+ ldb #DefIOSiz-1
+Z0151 lda B,Y 
+ sta B,U 
+ decb 
+ bpl Z0151 
  
  leax CMDSTR,PCR Get ptr to "shell"
  leau SHLFUN,PCR Get ptr to startup file name
@@ -153,8 +152,8 @@ ARGCPY lda ,X+
  OS9 F$Chain Start new process
 
 CLDERR equ *
- clr $FFA8
- jmp <$6B
+ clr $FFA8 not a warm boot
+ jmp <D.Crash
 
 CLICPT rti COLDSTART Intercept routine
  
