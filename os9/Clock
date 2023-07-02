@@ -1,5 +1,5 @@
 
- nam Clock Module
+ nam Color Computer OS-9 Level II 02.00.00 Clock Module
 
 * Copyright 1980 by Microware Systems Corp.,
 
@@ -30,6 +30,9 @@ CLOCK set $FFE0
  ifeq ClocType-M58167
 * Initialize M58167 Clock Chip For 100Ms Intervals
  endc
+ ifeq ClocType-GIME
+* Initialize GIME Timer For 17Ms Intervals
+ endc
 *    And Sets Irq Polling Routine
 *
 *****
@@ -38,9 +41,9 @@ CLOCK set $FFE0
 *
 Type set SYSTM+OBJCT
 Revs set REENT+1
-ClkMod mod ClkEnd,ClkNam,Type,Revs,ClkEnt,CPORT
+ClkMod mod ClkEnd,ClkNam,Type,Revs,ClkEnt,0
 ClkNam fcs /Clock/
- fcb 3 Edition number
+ fcb 9 Edition number
 *********************
 * Edition history
 *
@@ -52,13 +55,21 @@ ClkNam fcs /Clock/
 *          IRQ mask problem
 *          set up to use defsfile in assembly directory
 *
+* Ed.  9 - file set up for LII V2.0                    12/15/20 CJB
+*
 
 CLKPRT equ M$Mem Stack has clock port address
 *
 * Clock Data Definitions
 *
 TIMSVC fcb F$TIME
- fdb TIME-*-2
+ fdb TIME-*-2       ; M0194
+ ifeq ClocType-GIME
+ fcb F$VIRQ
+ fdb M0119-*-2
+ fcb F$Alarm
+ fdb M015D-*-2
+ endc
  fcb $80
 
  ifeq ClocType-MC6840
@@ -104,9 +115,24 @@ Go equ 21
 *
 *  Clock Interrupt Service Routine
 *
+ ifne ClocType-GIME NOT Color Computer 3
 NOTCLK jmp [D.SvcIRQ] Go to interrupt service
+ endc
 
-CLKSRV ldx CLKPRT,PCR Get clock address
+CLKSRV equ *
+ ifeq ClocType-GIME Color Computer 3
+ lda IRQEnReg get GIME IRQ enables
+ ora D.IRQS add pending IRQs
+CLKSRV2 sta D.IRQS update pending
+ bita #%00001000 is it vertical border?
+ bne CLKSRV3 branch if yes
+ ldd D.Poll delegate to polling routine
+ bra TICK60
+CLKSRV3 anda #255-%00001000 clear pending
+ sta D.IRQS update pending
+ else
+ ldx CLKPRT,PCR Get clock address
+ endc
  ifeq ClocType-MPT Swtc mp-t board
  lda 1,X Get control register
  bita #$80 Is it clock?
@@ -124,8 +150,10 @@ CLKSRV ldx CLKPRT,PCR Get clock address
  beq NOTCLK Branch if not clock
  endc
 
+ ifne ClocType-GIME NOT Color Computer 3
 TICK clra SET Direct page
  tfr A,DP
+ endc
  ifne ClocType-M58167
 *
 * Update Current Time
@@ -155,6 +183,7 @@ TICKLOOP pshs B save on the stack
  bcs TICK25 Branch if not
  inca COUNT Day
  leax MONTHS,PCR Get days/month table
+ ifne ClocType-GIME NOT Color Computer 3
  ldb D.Month Get month
  cmpb #2 Is it february?
  bne TICK10 Branch if not
@@ -163,9 +192,20 @@ TICKLOOP pshs B save on the stack
  andb #3 Is it leap year?
  bne TICK10 Branch if not
  deca ADD Feb 29
-TICK10 ldb D.Month Get month
+TICK10 equ *
+ endc
+ ldb D.Month Get month
  cmpa B,X End of month?
  bls TICK20 Branch if not
+ ifeq ClocType-GIME Color Computer 3
+ cmpb #2 Is it february?
+ bne TICK10 Branch if not
+ ldb D.YEAR Get year
+ andb #3 Is it leap year?
+ cmpd #(29*256)+0
+ beq TICK20 Branch if yes
+TICK10 equ *
+ endc
  ldd D.YEAR Get year & month
  incb COUNT Month
  cmpb #13 End of year?
@@ -179,7 +219,11 @@ TICK25 std D.DAY Update day & hour
  clra NEW Minute
 TICK30 clrb NEW Second
 TICK35 std D.MIN Update minute & second
+ ifeq ClocType-GIME Color Computer 3
+ lda #60 Get ticks/second
+ else
  lda D.TSEC Get ticks/second
+ endc
  sta D.Tick
  endc
  ifeq ClocType-MC6840
@@ -195,11 +239,16 @@ TICK50
  else
 TICK50
  endc
+ ifeq ClocType-GIME Color Computer 3
+ ldd D.VIRQ get virtual IRQ vector
+TICK60 std D.SvcIRQ update interrupt service entry
+ jmp [D.XIRQ] vector to interrupt handler
+ else
  jmp [CLOCK] Go to system clock routine
-
-
-
  endc
+ endc
+
+ ifne ClocType-GIME
 *****
 *
 *  Clock Initialization Entry
@@ -331,6 +380,7 @@ CNVB20 decb Count Unit
  bne CNVB20 Branch if so
  rts
  endc
+ endc
  page
 *****
 *
@@ -384,6 +434,137 @@ TIME20 lda 0,X Get bcd byte
  clrb Clear Carry
  rts
 
+ page
+*****
+*
+*  Subroutine VIRQ
+*
+* Add or remove device from VIRQ table
+*
+VIRQ equ *
+M0119 pshs    cc                       ;0119  34 01
+        orcc    #$50                     ;011b  1a 50
+        ldy     M00b0                    ;011d  10 9e b0
+        ldx     M0024                    ;0120  9e 24
+        ldb     $0c,X                    ;0122  e6 0c
+        ldx     $04,U                    ;0124  ae 44
+        beq     z0147                    ;0126  27 1f
+        tst     ,Y                       ;0128  6d a4
+        beq     z013b                    ;012a  27 0f
+        subb    #$02                     ;012c  c0 02
+        aslb                             ;012e  58
+        leay    b,Y                      ;012f  31 a5
+        tst     ,Y                       ;0131  6d a4
+        bne     z0157                    ;0133  26 22
+Z0135   tst     ,--y                     ;0135  6d a3
+        beq     z0135                    ;0137  27 fc
+        leay    $02,Y                    ;0139  31 22
+Z013b   ldx     $06,U                    ;013b  ae 46
+        stx     ,Y                       ;013d  af a4
+        ldy     $01,U                    ;013f  10 ae 41
+        sty     ,X                       ;0142  10 af 84
+        bra     z0153                    ;0145  20 0c
+;------------------------------------------------------------------------
+Z0147   ldx     $06,U                    ;0147  ae 46
+Z0149   tst     ,Y                       ;0149  6d a4
+        beq     z0153                    ;014b  27 06
+        cmpx    ,Y++                     ;014d  ac a1
+        bne     z0149                    ;014f  26 f8
+        bsr     z010c                    ;0151  8d b9
+Z0153   puls    cc                       ;0153  35 01
+        clrb                             ;0155  5f
+        rts                              ;0156  39
+;------------------------------------------------------------------------
+Z0157   puls    cc                       ;0157  35 01
+        comb                             ;0159  53
+        ldb     #$ca                     ;015a  c6 ca
+        rts                              ;015c  39
+;------------------------------------------------------------------------
+
+ page
+*****
+*
+*  Subroutine ALARM
+*
+* Set an alarm
+*
+ALARM equ *
+M015d ldx     #m100f                   ;015d  8e 10 0f
+        ldd     $01,U                    ;0160  ec 41
+        bne     z0167                    ;0162  26 03
+        std     $06,X                    ;0164  ed 06
+        rts                              ;0166  39
+;------------------------------------------------------------------------
+Z0167   tsta                             ;0167  4d
+        bne     z0170                    ;0168  26 06
+        cmpd    #m0001                   ;016a  10 83 00 01
+        bne     z0184                    ;016e  26 14
+Z0170   std     $06,X                    ;0170  ed 06
+        ldy     M0050                    ;0172  10 9e 50
+        lda     $06,Y                    ;0175  a6 26
+        ldb     M00d0                    ;0177  d6 d0
+        ldx     $04,U                    ;0179  ae 44
+        ldu     #m100f                   ;017b  ce 10 0f
+        ldy     #m0005                   ;017e  10 8e 00 05
+        bra     z01a4                    ;0182  20 20
+;------------------------------------------------------------------------
+Z0184   cmpd    #m0002                   ;0184  10 83 00 02
+        bne     z0190                    ;0188  26 06
+        ldd     $06,X                    ;018a  ec 06
+        std     $01,U                    ;018c  ed 41
+        bra     z0197                    ;018e  20 07
+;------------------------------------------------------------------------
+Z0190   comb                             ;0190  53
+        ldb     M00bb                    ;0191  d6 bb
+        rts                              ;0193  39
+;------------------------------------------------------------------------
+
+M0194 ldx     #m0028                   ;0194  8e 00 28
+Z0197   ldy     M0050                    ;0197  10 9e 50
+        ldb     $06,Y                    ;019a  e6 26
+        lda     M00d0                    ;019c  96 d0
+        ldu     $04,U                    ;019e  ee 44
+        ldy     #m0006                   ;01a0  10 8e 00 06
+Z01a4   OS9     F$Move                   ;01a4  10 3f 38
+        rts                              ;01a7  39
+;------------------------------------------------------------------------
+ ifeq ClocType-GIME
+*****
+*
+*  Clock Initialization Entry
+*  Color Computer 3 OS-9 Level II
+*
+ClkEnt pshs CC save interrupt masks
+ lda #60 Set ticks / second
+ sta D.Tick
+ lda #6 Set ticks / time-slice
+ sta D.TSlice
+ sta D.Slice
+ orcc #IRQMask+FIRQMask Set intrpt masks
+ leax CLKSRV,PCR Get service routine
+ stx D.IRQ Set interrupt vector
+ leax M008E,pcr Get service routine
+ stx D.VIRQ Set virtual interrupt vector
+ leay TIMSVC,PCR
+ OS9 F$SSVC Set time sevice routine
+ ldx #GIMERegs
+ clra
+ sta GR.HSYNC,X disable pia HSYNC, select DDR
+ sta GR.KRDDR,X all inputs
+ sta GR.VSYNC,X disable pia VSYNC, select DDR
+ coma
+ sta GR.KCDDR,X all outputs
+ lda #%00110100
+ sta GR.HSYNC,X disable pia HSYNC, select data reg
+ lda #%00111100
+ sta GR.VSYNC,X disbale pia VSYNC, select data reg
+ lda GR.KBCOL,X clear any pending VSYNC interrupt
+ lda D.IRQER get image of GIME IRQENR
+ ora #%00001000 enable vertical border IRQ
+ sta D.IRQER update image
+ sta IRQEnReg enable it
+ puls CC,PC
+ endc
 
  emod
 ClkEnd equ *

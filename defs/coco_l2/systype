@@ -54,9 +54,9 @@ DAT.BMSz equ $40 Memory Block Map size
 DAT.WrPr equ 0 no write protect
 DAT.WrEn equ 0 no write enable
 SysTask equ 0 Coco System Task number
-IOBlock equ $3F
+GRBlock equ $3F
 ROMBlock equ $3F
-IOAddr equ $7F
+GRAddr equ $7F
 ROMCount equ 1 number of blocks of ROM (High RAM Block)
 RAMCount equ 1 initial blocks of RAM
 MoveBlks equ DAT.BlCt-ROMCount-2 Block numbers used for copies
@@ -81,9 +81,43 @@ MappedIO equ True (Actually False but it works better this way)
 ************************************************************
 * Hardware addresses
 *
+IRQEnReg equ $FF92 Interrupt request enable register
 PalAdr equ $FFB0 Palette registers
 BordReg equ $FF9A Border color register
-GIMERegs equ $FF00 Base address of GIME registers
+GIMERegs equ $FF00 Base address of I/O and GIME registers
+
+* Offsets from GIMERegs
+ org $0
+GR.KBROW rmb 1 PIA keyboard row port
+GR.KRDDR equ GR.KBROW
+GR.JOYCP equ GR.KBROW
+GR.HSYNC rmb 1 PIA HSYNC interrupt control (and DDR control)
+GR.AMUX0 equ GR.HSYNC
+GR.KRDDS equ GR.HSYNC
+GR.KBCOL rmb 1 PIA keyboard columm por
+GR.KCDDR equ GR.KBCOL
+GR.VSYNC rmb 1 PIA VSYNC interrupt control (and DDR control)
+GR.AMUX1 equ GR.VSYNC
+GR.KCDDS equ GR.VSYNC
+ rmb $1c
+GR.DAC rmb 1 PIA DAC (and cassette in, and serial out)
+GR.DACDDR equ GR.DAC
+GR.CASIN equ GR.DAC
+GR.SEROUT equ GR.DAC
+GR.CDINT rmb 1 PIA Carrier Detect interrupt control (and DDR control)
+GR.CASMOT equ GR.CDINT
+GR.DACDDS equ GR.CDINT
+GR.VDG rmb 1 PIA VDG control (and serial in, and sound out, etc)
+GR.VDGDDR equ GR.VDG
+GR.SERIN equ GR.VDG
+GR.SNDOUT equ GR.VDG
+GR.RAMSZ equ GR.VDG
+GR.MONTYP equ GR.VDG
+GR.CIRQ rmb 1 PIA CART interrupt control (and DDR control)
+GR.SNDEN equ GR.CIRQ
+GR.VDGDDS equ GR.CIRQ
+ rmb $1c
+
 
 ************************************************************
 * Device addresses

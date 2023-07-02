@@ -61,7 +61,8 @@ VIA rmb 1 VIA timer
 M58167 rmb 1 M58167 clock
 MC146818 rmb 1 MC146818 clock
 MPT rmb 1 Swtpc MPT timer card
-GIME rmb 1 Color computer GIME chip clock
+GIME rmb 1 Color computer 3 GIME chip clock
+MC6847 rmb 1 Color computer MC6847 interrupt clock
 
 ClocType set 0
 

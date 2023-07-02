@@ -2,4 +2,5 @@
 *.inf
 *.dfd
 *.swp
+.DS_Store
 

@@ -55,9 +55,43 @@ LastRAM equ IOBlock maximum RAM block number
 ************************************************************
 * Hardware addresses
 *
+IRQEnReg equ $FF92 Interrupt request enable register
 PalAdr equ $FFB0 Palette registers
 BordReg equ $FF9A Border color register
 GIMERegs equ $FF00 Base address of GIME registers
+
+* Offsets from GIMERegs
+ org $0
+GR.KBROW rmb 1 PIA keyboard row port
+GR.KRDDR equ GR.KBROW
+GR.JOYCP equ GR.KBROW
+GR.HSYNC rmb 1 PIA HSYNC interrupt control (and DDR control)
+GR.AMUX0 equ GR.HSYNC
+GR.KRDDS equ GR.HSYNC
+GR.KBCOL rmb 1 PIA keyboard columm por
+GR.KCDDR equ GR.KBCOL
+GR.VSYNC rmb 1 PIA VSYNC interrupt control (and DDR control)
+GR.AMUX1 equ GR.VSYNC
+GR.KCDDS equ GR.VSYNC
+ rmb $1c
+GR.DAC rmb 1 PIA DAC (and cassette in, and serial out)
+GR.DACDDR equ GR.DAC
+GR.CASIN equ GR.DAC
+GR.SEROUT equ GR.DAC
+GR.CDINT rmb 1 PIA Carrier Detect interrupt control (and DDR control)
+GR.CASMOT equ GR.CDINT
+GR.DACDDS equ GR.CDINT
+GR.VDG rmb 1 PIA VDG control (and serial in, and sound out, etc)
+GR.VDGDDR equ GR.VDG
+GR.SERIN equ GR.VDG
+GR.SNDOUT equ GR.VDG
+GR.RAMSZ equ GR.VDG
+GR.MONTYP equ GR.VDG
+GR.CIRQ rmb 1 PIA CART interrupt control (and DDR control)
+GR.SNDEN equ GR.CIRQ
+GR.VDGDDS equ GR.CIRQ
+ rmb $1c
+
 
 ************************************************************
 * Device addresses
