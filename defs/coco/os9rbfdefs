@@ -20,6 +20,12 @@
 * 83/12/12   Added PE.Prior to save process priority.       rfd
 * 83/12/13   Added BufBusy bit in state flag (PD.SMF)       rfd
 
+***************
+*
+*   Record-Locking Switch
+*
+USERCDLK set 1
+
  pag
 ************************************************************
 *
@@ -64,6 +70,30 @@ FDBUF equ  $04 File descriptor in buffer
 *EOF equ $10 End of file
 InDriver equ $20 Currently in Disk Driver, or queued
 BufBusy equ $40 Buffer is currently busy
+
+ ifne USERCDLK
+**************************************************
+* Random Block Path Extension Format
+
+ org 0
+PE.PE rmb 1 PE path number
+PE.PDptr rmb 2 back ptr to this PE's Path Descriptor
+PE.NxFil rmb 2 Drive Open-File list ptr
+PE.Confl rmb 2 circular File Conflict list
+PE.Lock rmb 1 Path lockout status
+PE.LoLck rmb 4 Low  Locked Logical addr
+PE.HiLck rmb 4 High Locked Logical addr
+PE.Wait rmb 2 PE ptr to (next) locked-out PE
+PE.TmOut rmb 2 Max ticks to wait for locked segment
+PE.Owner rmb 1 Process ID of owner of locked segment
+PE.Req rmb 1 Temp save for PE.Lock
+
+* PE.Lock status codes
+Unlocked equ 0 no portion of file is locked
+RcdLock  equ 1 record from LoLck to HiLck locked
+FileLock equ 2 entire file locked
+EofLock equ 4 End of file is locked
+ endc
 
 *
 * Device Descriptor Format
