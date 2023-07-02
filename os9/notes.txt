@@ -1,5 +1,5 @@
 - The b.sh script assembles a module and compares it to the distribution version of the module. The script is currently hard-coded for Color Computer Level 2, Version 2.00
 - When comparing the assembled result of os9p1 to distribution, keep in mind that the assembler outputs a concatenation of os9p1 and _vectors. The b1.sh script accounts for this, specifically for os9p1
 - Starting with Level 2, sysgo was renamed to cc3go
-- Exact matches to CoCo OS9 Level 2, v 2.00: boot, os9p1, os9p2
+- Exact matches to CoCo OS9 Level 2, v 2.00: boot, os9p1, os9p2, cc3go
 

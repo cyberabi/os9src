@@ -1,0 +1,166 @@
+ nam CC3Go CoCo 3 2.00.00
+ ttl CC3Go - system bootstrap startup module
+
+* Copyright 1980 by Motorola, Inc., and Microware Systems Corp.,
+* Reproduced Under License
+
+*
+* This source code is the proprietary confidential property of
+* Microware Systems Corporation, and is provided to licensee
+* solely  for documentation and educational purposes. Reproduction,
+* publication, or distribution in any form to any party other than 
+* the licensee is strictly prohibited!
+*
+
+*
+* Portions reconstructed from Level 1 sources by C. Burke
+* Change history is missing for the associated changes
+*
+
+ use defsfile
+
+*****
+*
+*  Coldstart Module
+*
+* Starts Cmd Module On Path "/Term"
+*
+Type set PRGRM+OBJCT
+Revs set 1
+ mod CldEnd,CldNam,Type,Revs,CldEnt,CldMem
+CldNam fcs /CC3Go/
+
+ fcb 5 Edition number
+
+ rmb $300 stack space
+
+CldMem equ .
+
+MOTD equ *
+ fcc " OS-9 LEVEL TWO VR. 02.00.01"
+ fcb $0d,$0a
+ fcc "     COPYRIGHT 1986 BY"
+ fcb $0d,$0a
+ fcc "   MICROWARE SYSTEMS CORP."
+ fcb $0d,$0a
+ fcc "   LICENSED TO TANDY CORP."
+ fcb $0d,$0a
+ fcc "    ALL RIGHTS RESERVED."
+ fcb $0d,$0a,$0a
+MOTDEnd equ *
+
+HDStr fcc "/H0"
+ fcb $D
+HDDir fcc "/H0/"
+DirStr fcc "Cmds"
+ fcb $D
+ fcc ",,,,," room for patch
+CMDSTR fcc "Shell"
+ fcb $D
+ fcc ",,,,," room for patch
+AEXSTR fcc "AutoEx"
+ fcb $D
+ fcc ",,,,," room for patch
+SHLFUN fcc "STARTUP -P"
+ fcb $D
+ fcc ",,,,," room for patch
+FUNSIZ equ *-SHLFUN
+MVUSTR fcc "i=/1"
+ZERSTR fcb $D
+ fcc ",,,,," room for patch
+MVUSIZ equ *-MVUSTR
+
+SysTime fcb 87,2,16,0,0,0 default system time
+
+CldEnt equ *
+ leax CLICPT,PCR Set up signal intercept
+ OS9 F$ICPT
+ OS9 F$ID 
+ ldb #$80 
+ OS9 F$SPrior 
+ leax MOTD,PCR get startup msg ptr
+ ldy #(MOTDEnd-MOTD) get length
+ lda #1 standard out
+ OS9 I$WRITE 
+ leax SysTime,PCR
+ OS9 F$STime
+
+ leax DirStr,PCR Get directory name ptr
+ lda #EXEC. Get execution mode
+ OS9 I$ChgDir Change execution directory
+* NOTE: do not test for error, at least system will boot
+ leax HDStr,PCR Try for hard disk on h0
+ lda #READ.+WRITE.
+ OS9 I$ChgDir
+ bcs NOHD
+ leax HDDir,PCR HD execution directory
+ lda #EXEC. Get execution mode
+ OS9 I$ChgDir
+
+NOHD pshs U,Y
+ OS9 F$ID Get proc id
+ bcs CLDERR
+ 
+* Initialize process memory map
+ LEAX ,U 
+ OS9 F$GPrDsc 
+ BCS CLDERR 
+ LEAY ,U 
+ LDX #0 
+ LDB #1 
+ OS9 F$MapBlk 
+ BCS CLDERR 
+ LDA #$55 warm start sentinel 
+ STA $71,U 
+ LDD $4A,U 
+ LEAU D,U 
+ LEAU $20,U 
+ LEAY $20,Y 
+ LDB #$0F 
+Z0151 LDA B,Y 
+ STA B,U 
+ DECB 
+ BPL Z0151 
+ 
+ leax CMDSTR,PCR Get ptr to "shell"
+ leau SHLFUN,PCR Get ptr to startup file name
+ ldd #OBJCT*256 Get type
+ ldy #FUNSIZ Size of parameters
+ OS9 F$FORK Execute startup file
+ bcs CLDERR Branch if error
+ OS9 F$WAIT Wait for it
+ 
+ leax AEXSTR,PCR Get ptr to "AutoEx"
+ leau ZERSTR,PCR possible patch arg
+ ldd #OBJCT*256 Get type
+ ldy #1 Size of parameters
+ OS9 F$FORK Execute startup file
+ bcs CLDM10 Branch if error
+ OS9 F$WAIT Wait for it
+
+CLDM10 puls Y,U
+ leax MVUSTR,PCR Get argument list ptr
+ leay ,U
+ ldb #MVUSIZ
+ARGCPY lda ,X+
+ sta ,Y+
+ decb
+ bne ARGCPY
+ 
+ leax CMDSTR,PCR Get command name ptr
+ ldd #OBJCT*256
+ ldy #MVUSIZ parameter size
+ OS9 F$Chain Start new process
+
+CLDERR equ *
+ clr $FFA8
+ jmp <$6B
+
+CLICPT rti COLDSTART Intercept routine
+ 
+ emod Module Crc
+
+CldEnd equ *
+
+
+ end
