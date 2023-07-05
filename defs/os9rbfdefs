@@ -87,6 +87,7 @@ PE.Wait rmb 2 PE ptr to (next) locked-out PE
 PE.TmOut rmb 2 Max ticks to wait for locked segment
 PE.Owner rmb 1 Process ID of owner of locked segment
 PE.Req rmb 1 Temp save for PE.Lock
+PE.Prior rmb 1 Temp save for process priority
 
 * PE.Lock status codes
 Unlocked equ 0 no portion of file is locked

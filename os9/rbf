@@ -57,13 +57,14 @@ RCD.LOCK equ  included
 * 16 83/07/26 Corrected problem in GCPSEC that allowed a process
 *              to get a bad sector if first process is in driver.
 *                                                        (RFD/MGH)
+* 28 23/07/02 Restored Color Computer OS9 Level 2 version    (CJB)
 
 *
 * Portions reconstructed from Level 2 sources by C. Burke
 * Change history is missing for the associated changes
 *
 
-Edition  equ  16
+Edition  equ  28
 
 ***************
 * Random Block File Manager Module
@@ -167,17 +168,27 @@ Create10 cmpb #E$PNNF    Pathname not found?
          ldx  PD.RGS,Y
          stu  R$X,x      return updated ptr
 
-* Allocate File Descriptor Sector
+* Allocate File Descriptor Sector and initial data allocation
          ldb  PD.SBP,Y
          ldx  PD.SBP+1,Y
          lda  PD.SSZ,Y
          ldu  PD.SSZ+1,Y
          pshs U,X,D      save them
-         clra
-         ldb  #1         request one FD sector
-         lbsr SECALL     Call sector allocation
+         
+         ldx  PD.RGS,Y
+         lda  R$A,X      Get access mode
+         clrb
+         anda #PEXEC.    Public executable?
+         beq  CRTEX00    No; just the FD sector
+         ldd  R$Y,X      Yes; Get initial allocation size 
+CRTEX00  addd #1         Request 1 more FD sector 
+         bcc  CRTEX0     More than 65535? 
+         ldd  #65535     Yes; get as many as we can
+* Was Z0079
+CRTEX0   lbsr SECALL     Call sector allocation
          bcc  Create20   bra if no error
-         leas 8,S        return scratch
+         leas 6,S        return scratch
+CRTEX01	 leas 2,S        return scratch
 CRTEX1   leas StkTemps,S return scratch
          lbra KillPth0   abort; (B)=error code
 
@@ -205,12 +216,11 @@ Create12 tst  0,x        is dir entry still free?
          bcc  Create12
 * If dir is at EOF, then expand it
 Create13 cmpb #E$EOF     end of file?
-         bne  CRTEX1     ..No; abort
+         bne  CRTEX01    ..No; continue
          ldd  #DIR.SZ    add size of new rcd
          lbsr WriteSub   expand Dir
-         bcs  CRTEX1     error; abort
+         bcs  CRTEX01    error; abort
          lbsr WrtFDSiz   Update file size in FD
-* lbsr CLRBUF clear buffer
          lbsr RdCurDir   re-read dir rcd
 
 Create15 leau 0,x        (U)=Dir Rcd Ptr
@@ -420,14 +430,15 @@ MakDir   lbsr Create     create file
          bcs  MakDir90   error; abort
          lbsr EXPAND     allocate first two entries
          bcs  MakDir90   error; abort
+         lbsr GETFD      refresh FD
          ldu  PD.BUF,Y   FD buffer ptr
          lda  FD.ATT,u   get file attributes
          ora  #DIR.      mark as dir
          sta  FD.ATT,u   update FD
-         bsr  WrtFDSiz   update size in FD sector
+         bsr  WrtFDS10   update size in FD sector
          bcs  MakDir90
          lbsr ZerBuf     clear first dir sector
-         ldd  #"..+$80
+         ldd  #256*'.'+'.'+$80
          std  0,U        Parent Dir name, '..'
          stb  DIR.SZ,U   Current Dir name, '.'
          lda  PD.DFD,Y   get parent dir FD psn
@@ -446,7 +457,7 @@ MakDir90 bra  KillPth1
 *   Update file size in FD sector.  Called by Create, Makdir.
 
 WrtFDSiz lbsr GETFD      read FD
-         ldx  PD.BUF,Y
+WrtFDS10 ldx  PD.BUF,Y
          ldd  PD.SIZ,Y
          std  FD.SIZ,X
          ldd  PD.SIZ+2,Y update file size in FD
@@ -544,19 +555,18 @@ ChgDir   pshs Y          save PD
          lbsr Open       open file
          bcs  KillPth    error; abort
          ldx  D.Proc     get process ptr
-         lda  PD.DRV,Y   get drive number
          ldu  PD.FD+1,Y  get lsbs of FD psn
          ldb  PD.MOD,Y   get mode
          bitb #READ.+WRITE. R/W dir?
          beq  ChgDir10   ..no
          ldb  PD.FD,Y    FD psn msb
-         std  P$DIO+2,X  set default
+         stb  P$DIO+3,X  set default
          stu  P$DIO+4,X
 ChgDir10 ldb  PD.MOD,Y   get mode
          bitb #EXEC.     execution dir?
          beq  ChgDir90   ..no; exit
          ldb  PD.FD,Y    FD psn msb
-         std  P$DIO+8,X  set default
+         stb  P$DIO+9,X  set default
          stu  P$DIO+10,X Set up default dir
 ChgDir90 clrb            clear carry
          bra  KillPth    return resources; exit
@@ -609,9 +619,10 @@ Delete20 bcs  Delete99   error; abort
          sta  PD.FD,Y    return to parent dir
          ldd  PD.DFD+1,Y
          std  PD.FD+1,Y
-         lbsr Insert     place in parent's rcd-lock list
          lbsr GETFD
-         bcs  Delete99   ..error; abort
+         bcs Delete99    ..error; abort
+         lbsr Insert     place in parent's rcd-lock list
+         ldu  PD.BUF,Y 
          lbsr InitPD10   init PD for dir
          ldd  PD.DCP,Y   restore rcd addr
          std  PD.CP,Y
@@ -872,6 +883,9 @@ RBRW25   ldu  PD.BUF,Y   get buffer ptr
 RBRW30   pshs D          Save byte count
          jsr  [S.RWaddr+2,S] Transfer bytes
          stx  S.Destin+2,S Update source/destination
+         lda  PD.SMF,Y 
+         anda #255-BufBusy
+         sta  PD.SMF,Y 
          ldb  1,S        get count
          addb PD.CP+3,Y  Update current posn
          stb  PD.CP+3,Y
@@ -1089,7 +1103,7 @@ GetS.C   cmpb #SS.POS    get posn?
          rts
 
 GetS.D   cmpb #SS.FD     Read FD sector?
-         bne  GetS.X     ..No
+         bne  GetS.D2    ..No
          lbsr GETFD      read FD sector
          bcs  GetS.B9    ..error; abort
          ldu  PD.RGS,Y
@@ -1100,6 +1114,19 @@ GetS.D   cmpb #SS.FD     Read FD sector?
 Gets.D1  ldx  R$X,U      user's destination ptr
          ldu  PD.BUF,Y
          lbra RdByte     copy the bytes
+
+GetS.D2 cmpb #SS.FDINF   Get info? 
+        bne  GetS.X      ..No
+        lbsr CLRBUF      zero caller's buffer 
+        bcs  GetS.B9     ..eror; abort
+        ldb  R$Y,U       bytecount [BUG wrong endian order] 
+        ldx  R$U,U       user's destination ptr 
+        lbsr GETSEC      read file descriptor sector
+        bcs  GetS.B9     ..eror; abort
+        ldu  PD.RGS,Y 
+        ldd  R$Y,U 
+        clra             byte count; clear carry
+        bra  Gets.D1 
 
 GetS.X   lda  #D$GSTA    get driver entry offset
          lbra DEVDIS
@@ -1149,7 +1176,7 @@ PSt100.C std  PD.SIZ,Y
 
 PSt100.D comb
          ldb  #E$BMode   Error; bad mode
-         rts
+PSt100.E rts
 
 PSt110   cmpb #SS.FD     write FD option?
          bne  PSt200     ..no
@@ -1157,7 +1184,7 @@ PSt110   cmpb #SS.FD     write FD option?
          bita #WRITE.    open for write?
          beq  PSt100.D   ..no; abort
          lbsr GETFD      read FD sector
-         bcs  Return99   ..abort if error
+         bcs  PSt100.E   ..abort if error
          pshs y          save User ID, PD ptr
          ldx  R$X,U      get user's addr
          ldu  PD.BUF,Y   FD buffer addr
@@ -1199,12 +1226,75 @@ PSt200
 PSt200.A lbra Gain       Gain segment requested
 
 PSt300   cmpb #SS.Ticks  set Gain Delay interval?
-         bne  PSt999     ..No
+         bne  PSt301     ..No
          ldd  R$X,U      get interval
          ldx  PD.Exten,Y
          std  PE.TmOut,X set it
          rts             (carry clear)
  endc
+
+Pst301	 cmpb #SS.RsBit   Reserve bitmap sector?
+         bne  Pst400      ..No 
+         LDX     $1E,Y                    ;06B6: AE A8 1E 
+         LDA     $05,U                    ;06B9: A6 45 
+         STA     $1E,X                    ;06BB: A7 88 1E 
+         CLR     $1D,X                    ;06BE: 6F 88 1D 
+Pst4099  rts 
+
+Pst400	 cmpb #SS.Attr    Set attributes? 
+         bne  Pst999      ..No
+         lbsr GETFD      read FD sector
+         bcs  Pst4099    ..abort if error
+         ldx  D.PROC     get process ptr
+         LDA     $08,X                    ;06CD: A6 08 
+         beq  Pst401                    ;06CF: 27 06 
+         LDX     $08,Y                    ;06D1: AE 28 
+         CMPA    $01,X                    ;06D3: A1 01 
+         bne  Pst407                    ;06D5: 26 56 
+Pst401   LDA     $05,U                    ;06D7: A6 45 
+         TFR     A,B                      ;06D9: 1F 89 
+         LDU     $08,Y                    ;06DB: EE 28 
+         EORB    ,U                       ;06DD: E8 C4 
+         bpl  Pst406                    ;06DF: 2A 47 
+         TSTA                             ;06E1: 4D 
+         bmi  Pst404                    ;06E2: 2B 2D 
+         LDX     $1E,Y                    ;06E4: AE A8 1E 
+         LDD     $08,X                    ;06E7: EC 08 
+         CMPD    $34,Y                    ;06E9: 10 A3 A8 34 
+         bne  Pst402                    ;06ED: 26 07 
+         LDB     $0A,X                    ;06EF: E6 0A 
+         CMPB    $36,Y                    ;06F1: E1 A8 36 
+         beq  Pst407                    ;06F4: 27 37 
+Pst402   LDB     $0B,Y                    ;06F6: E6 2B 
+         LDX     $0C,Y                    ;06F8: AE 2C 
+         PSHS    X,B                      ;06FA: 34 14 
+         STD     $0B,Y                    ;06FC: ED 2B 
+         LDB     #$20                     ;06FE: C6 20 
+         STD     $0D,Y                    ;0700: ED 2D 
+Pst403	 lbsr RdNxtDir   read next director sector
+         bcs  Pst405    ..abort if error
+         TST     ,X                       ;0707: 6D 84 
+         beq  Pst403                    ;0709: 27 F7 
+         PULS    X,B                      ;070B: 35 14 
+         STB     $0B,Y                    ;070D: E7 2B 
+         STX     $0C,Y                    ;070F: AF 2C 
+Pst404	 LDB     #$EE                     ;0711: C6 EE 
+         bra  Pst409                    ;0713: 20 1A 
+
+Pst405	 PULS    X,A                      ;0715: 35 12 
+         STA     $0B,Y                    ;0717: A7 2B 
+         STX     $0C,Y                    ;0719: AF 2C 
+         CMPB    #$D3                     ;071B: C1 D3 
+         bne  Pst409                    ;071D: 26 10 
+         lbsr GETFD      read FD sector
+         LDU     $08,Y                    ;0722: EE 28 
+         LDX     $06,Y                    ;0724: AE 26 
+         LDA     $05,X                    ;0726: A6 05 
+Pst406	 STA     ,U                       ;0728: A7 C4 
+         lbra PUTFD      write FD sector 
+Pst407	 LDB     #$D6                     ;072D: C6 D6 
+Pst409   coma                             ;072F: 43 
+         RTS                              ;0730: 39 
 
 * Pass putstat to driver
 PSt999   lda  #D$PStA    get putstat entry
@@ -1295,7 +1385,7 @@ SchDir20 anda #$7F       strip ms bit
          lda  PD.MOD,Y   caller's I/O mode
          ldu  D.Proc     caller's process desc
          leau P$DIO,U    ptr to R/W default I/O
-         bita #PEXEC.+EXEC. Execute requested?
+         bita #EXEC.     Execute requested?
          beq  SchDir25
          leau 6,U        Skip to execution default I/O
 SchDir25 ldb  3,U
@@ -1337,8 +1427,14 @@ SchDir35 lbsr GETDD      read sector zero
 SchDir50 stx  S.PathPt,S save pathlist ptr
          stx  S.NextPt,S save next ptr
 SchDir60 lbsr CLRBUF     clear buffer
-         lbsr Insert     insert to new file, clear ptrs
-         bcs  DirErr10   ..Error; abort
+         lbcs DirErr10   ..Error; abort
+         lda  S.Delim,S  get last delimiter
+         anda #$7F 
+         cmpa #'@ 
+         beq SchDir61 
+         lbsr GETFD      get file descriptor sector
+         lbcs DirErr10   ..Error; abort
+SchDir61 lbsr Insert     insert to new file, clear ptrs
          lda  S.Delim,S  get last delimiter
          cmpa #PDELIM    end of pathlist?
          bne  SchDir85   ..Yes; path is found, exit
@@ -1357,20 +1453,28 @@ SchDir60 lbsr CLRBUF     clear buffer
          sty  S.NextPt,S save ptr to next element
          ldy  S.PD,S     restore PD
          bcs  DirErr     ..abort if illegal name
+         pshs U,Y                      ;0832: 34 60 
+         LDU     $30,Y                    ;0834: EE A8 30 
+         LEAU    $20,U                    ;0837: 33 C8 20 
+         CLRA                             ;083A: 4F 
+         TFR     D,Y                      ;083B: 1F 02 
+         lbsr FromUser   copy into system space
+         puls U,Y                      ;0840: 35 60 
          lbsr RdCurDir   read current(first) dir rcd
          bra  SchDir80
 
 * Repeat until name found, or error
 SchDir70 bsr  SaveDel    Save deleted entry if appropriate
-SchDir75 bsr  RdNxtDir   read next dir rcd
+SchDir75 lbsr RdNxtDir   read next dir rcd
 SchDir80 bcs  DirErr     ..exit if error of EOF
          tst  0,X        deleted entry?
          beq  SchDir70   ..Yes; record it
-         leay 0,X
-         ldx  S.PathPt,S pathname ptr
-         ldb  S.NameSz,S get name size
          clra
-         os9  F$CmpNam   Pathname found in dir?
+         ldb  S.NameSz,S get name size
+         EXG     X,Y                      ;0855: 1E 12 
+         LDX     $30,X                    ;0857: AE 88 30 
+         LEAX    $20,X                    ;085A: 30 88 20 
+         lbsr CmpName    Pathname found in dir?
          ldx  S.PD,S     PD
          exg  X,Y
          bcs  SchDir75   ..No; keep searching
@@ -1380,7 +1484,7 @@ SchDir80 bcs  DirErr     ..exit if error of EOF
          ldd  DIR.FD+1,X
          std  PD.FD+1,Y
          lbsr Remove     remove from prev rcd lock list
-         bra  SchDir60   ..move to next pathname
+         lbra SchDir60   ..move to next pathname
 
 SchDir85 ldx  S.NextPt,S retrieve updated pathlist ptr
          tsta            sign bit on last byte?
@@ -1392,7 +1496,11 @@ SchDir90 stx  S.PathPt,S
          clra            return carry clear
 SchDir99 lda  S.Delim,S  return last delimiter char
          leas S.PathPt,S return temps
-         puls PC,U,Y,X   return (X)=updated pathptr
+         pshs D,CC
+        LDA     $0A,Y                    ;0890: A6 2A 
+        ANDA    #$BF                     ;0892: 84 BF 
+        STA     $0A,Y                    ;0894: A7 2A          
+         puls PC,U,Y,X,D,CC   return (X)=updated pathptr
 
 * (Y)=PD, (B)=Error Code
 DirErr   cmpb #E$EOF     end of file?
@@ -1512,7 +1620,7 @@ UserByte pshs u,x,b      save regs
 
 RBPNam   os9  F$PrsNam   parse normal pathname
          pshs x          save ptr
-         bcc  RBPNam99   ..Return if valid pathname
+         bcc  RBPNam91   ..Return if valid pathname
          clrb            NameSize = 0
 RBPNam10 pshs a          save delim char
          anda #$7F       strip MSB
@@ -1541,12 +1649,44 @@ RBPNam10 pshs a          save delim char
 
 RBPNam80 tstb            any pathlist found?
          bne  RBPNam90   ..Yes; return it
-         comb
+RBPNam89 comb
          ldb  #E$bpnam   error; Bad Pathname
          puls PC,X       abort
+
 RBPNam90 leay 0,X        return (Y)=next pathptr
+RBPNam91 cmpb #$20       pathlist too long?
+         bhi  RBPNam89   ..Yes; abort
          andcc #^carry    return carry clear
 RBPNam99 puls PC,X
+
+         page
+***************
+* Subroutine CmpName
+*   Compare names, case-insensitive
+
+* Passed: (X)=first name, character count terminator
+*         (Y)=second name, MSB set terminator
+*         (B)=max length
+* Returns: CC set if names don't match
+
+CmpName  pshs Y,X,D 
+CmpName1 lda  ,Y+
+         bmi  CmpName3   ..End of second name 
+         decb            count characters
+         beq  CmpName9   ..Second name too long
+         eora ,X+        identical bits to Zero
+         anda #$FF-$20   strip upper / lower case bit
+         beq CmpName1    ..Match; continue
+CmpName9 comb            no match; set carry
+         puls D,X,Y,PC
+CmpName3 decb            end of second name; count characters 
+         bne  CmpName9   ..not end of first name; no match
+         eora ,X         identical bits to Zero
+         anda #$7F-$20   strip set MSB and upper / lower case bit
+         bne  CmpName9   ..no match; abort
+         clrb            return carry clear
+         puls D,X,Y,PC
+
          page
 ***************
 * Subroutine ChkAcc
@@ -1798,13 +1938,15 @@ Gain20   os9  F$GProcP   get (Y)=owners's Process Desc ptr
 * (X)=Dominant PE
 Gain40   lda  PE.Owner,X Owner's process ID
          sta  P$DeadLk,U save for deadlock chk
-         bsr  UnQueue    Unlink anybody asleep in IOQue
-         ldy  4,S        restore PD
-
+         ldy  4,S        recover PD
+         lda  PD.SMF,Y
+         anda #255-BufBusy release the buffer 
+         sta  PD.SMF,Y
          ldu  PD.Exten,Y
          ldd  PE.Wait,X
          stu  PE.Wait,X  link into Waiting queue
          std  PE.Wait,U  finish linking into queue
+         lbsr WakePrc    wake waiting process
          ldx  PE.TmOut,U maximum tick count to wait
          os9  F$Sleep    wait for record
          pshs X          save tick count remaining
@@ -1826,37 +1968,11 @@ Gain55   cmpu PE.Wait,X  found one pointing to this?
          bne  Gain10     ..No; try again
          ldu  PD.Exten,Y (U)=PE ptr
          ldx  PE.TmOut,U waiting indefinately?
-         beq  Gain10     ..Yes; try again
+         lbeq  Gain10    ..Yes; try again
          ldb  #E$Lock    ..No; Record Lock error
 GainErr  coma            set carry
          stb  1,S        return (B)=error code
 Gain90   puls PC,U,Y,X,D exit
-
-*******************
-* Subroutine UnQueue
-*   Wake next process in I/O queue (if any)
-*
-* Passed: none
-* Destroys: D,CC
-
-UnQueue  pshs Y,X        Save regs
-         ldy  D.Proc
-         bra  UnQue80    While not last proc in IO Queue
-
-UnQue10  clr  P$IOQN,Y   Clear next ptr
-         ldb  #S$Wake
-         os9  F$Send
-
- ifeq LEVEL-1
-         jmp  NOWHERE    code no available
- else
-         os9  F$GProcP   Find next process descriptor
- endc
-
-         clr  P$IOQP,Y   clear previous link in next
-UnQue80  lda  P$IOQN,Y   Process ID of next process
-         bne  UnQue10    Endwhile
-         puls PC,Y,X
 
          ttl LockSeg -Lock out file seg
          page
@@ -1976,6 +2092,23 @@ Conflc90 puls PC,u,y,D   return
  else
 Remove   rts
  endc
+
+         page
+***************
+* Subroutine WakePrc
+* Wake up any process waiting on us
+
+WakePrc	 pshs Y,X,D
+         ldx  D.Proc
+         lda  P$IOQN,X   Next waiting process?
+         beq  WakePrc9   ..No; exit
+         clr  P$IOQN,X   no longer Waiting
+         ldb  #S$Wake 
+         OS9  F$Send     wake it up
+         OS9  F$GProcP   process we just woke
+         clr  P$IOQP,Y   no longer has predecessor
+WakePrc9 clrb
+         puls PC,Y,X,D
 
          page
 ***************
@@ -2116,6 +2249,10 @@ EMPS20   leax FDSL.S,X   Move to next entry
          cmpx 0,S        End of list?
          bcs  EMPS10     ..No
          lbsr SECDEA     return sectors allocated
+        CLRA                             ;0CCB: 4F 
+        CLRB                             ;0CCC: 5F 
+        STA     $19,Y                    ;0CCD: A7 A8 19 
+        STD     $1A,Y                    ;0CD0: ED A8 1A 
          comb            set Carry
          ldb  #E$SLF     Err: seg list full
 EMPS30   leas 2,S        Return scratch
@@ -2171,6 +2308,7 @@ SEGA25   ldd  FD.SIZ+1,U Set file size
          inc  FD.SIZ,U   Propagate carry
 SEGA27   lbsr PUTFD
 SEGA30   puls PC,U,X
+
          page
 ***************
 * Subroutine Secall
@@ -2183,7 +2321,6 @@ SEGA30   puls PC,U,X
 
 * Stacked Temps
          org  0
-S.SASSct rmb  1          First sector with SAS bits free
 S.SASCls rmb  2          Segment alloc size in clusters
 S.ClSize rmb  2          Cluster size (sectors/bit)
 S.MapSiz rmb  2          (remaining) BitMap Size in bytes
@@ -2252,46 +2389,40 @@ SECA13   std  S.BitReq,S set Bits Required
          lda  V.BMapSz,X
          cmpa DD.MAP,X   Has disk changed?
          bne  SECA14     ..Yes
-         ldd  S.BitReq,S get Bits required
-         cmpd S.SASCls,S greater than minimal allocation?
-         blo  SECA15     ..No; begin searching at start of bitmap
-         lda  V.MapSct,X get lowest productive bitmap sector
-         cmpa DD.MAP,X   reasonable number?
-         bcc  SECA14     ..No; start with sector one
-         sta  S.MapSct,S
-         nega
-         adda S.MapSiz,S subtract from number of sectors to search
-         sta  S.MapSiz,S
-         bra  SECA15     begin bitmap search
-
+         ldb  V.MapSct,X get lowest productive bitmap sector
+         cmpb DD.MAP,X   reasonable number?
+         bcs  SECA15     ..Yes; start from there
+        
 SECA14   ldd  DD.DSK,X
          std  V.DiskID,X save Disk ID
          lda  DD.MAP,X
          sta  V.BMapSz,X and Bitmap Size
-         clr  V.MapSct,X default first bitmap sector
-SECA15   inc  S.MapSct,S update bitmap sector
-         ldb  S.MapSct,S
+
+         clrb
+         stb  V.MapSct,X default first bitmap sector
+SECA15   incb 
+         stb  S.MapSct,S update bitmap sector
+         ldx  PD.DTB,Y   Drive Tbl ptr 
+         cmpb V.ResBit,X End of bitmap? 
+         beq  SECA18     ..Yes; exit 
          lbsr ReadBit    read (next) bitmap sector
          lbcs SECA85     error; abort
-         ldd  S.MapSiz,S
-         tsta            More than 256 bytes left?
-         beq  SECA17     ..No; cont
-         ldd  #$100      use entire buffer
+         ldb  S.MapSct,S get bitmap sector
+         cmpb S.MapSiz,S last sector of bitmap?
+         bls  SECA16     ..No; check all bytes of sector
+         clra
+         ldb  S.MapSiz+1,S special byte count for last sector
+         bra SECA17
+         
+SECA16   ldd  #$100      use entire buffer
 SECA17   ldx  PD.BUF,Y   ptr to bitmap
          leau D,X        ptr to bitmap end
          ldy  S.BitReq,S bits required
          clra            start at beginning
          clrb
          os9  F$SchBit   Search bitmap
-         pshs D,CC       save regs
-         tst  S.SASSct+3,S already found in Min allocation?
-         bne  SECA17a    ..Yes; continue
-         cmpy S.SASCls+3,S Min alloc clusters found?
-         bcs  SECA17a    ..No; cont
-         lda  S.MapSct+3,S
-         sta  S.SASSct+3,S save lowest reasonable bitmap sector
-SECA17a  puls D,CC       restore regs
          bcc  SECA20     found: Allocate bits
+         
          cmpy S.HiSize,S largest segment found?
          bls  SECA18     ..No; read next sector
          sty  S.HiSize,S save largest size
@@ -2299,14 +2430,18 @@ SECA17a  puls D,CC       restore regs
          lda  S.MapSct,S
          sta  S.HiSct,S  save bitmap sector
 SECA18   ldy  S.PDptr,S  restore PD
-         tst  S.MapSiz,S end of bitmap?
-         beq  SECA18b    ..Yes, use largest found
-         dec  S.MapSiz,S decr size left one sector
-         bra  SECA15     repeat
-
+         ldb  S.MapSct,S restore position in bitmap 
+         cmpb S.MapSiz,S At end of bitmap? 
+         bcs  SECA18C    ..No; continue 
+         bhi  SECA18A    ..Yes; wrap 
+         tst  S.MapSiz+1,S any bits in final sector?
+         bne  SECA18C    ..Yes; check it
+SECA18A  clrb            start at beginning of bitmap 
+SECA18C  ldx  PD.DTB,Y   Drive Tbl ptr
+         cmpb V.MapSct,X Reasonable sector?
+         bne  SECA15     ..No; repeat
 SECA18b  ldb  S.HiSct,S  any free space?
          beq  SECA80     ..No; abort
-         clra
          cmpb S.MapSct,S already in buffer?
          beq  SECA19     ..Yes
          stb  S.MapSct,S
@@ -2314,6 +2449,7 @@ SECA18b  ldb  S.HiSct,S  any free space?
 SECA19   ldx  PD.Buf,Y   buffer ptr
          ldd  S.HiPosn,S bit addr
          ldy  S.HiSize,S bit count
+         
 SECA20   std  S.HiPosn,S save bit offset
          sty  S.HiSize,S save bit count
          os9  F$AllBit   Allocate in bitmap
@@ -2321,19 +2457,16 @@ SECA20   std  S.HiPosn,S save bit offset
          ldb  S.MapSct,S used bitmap sector number
          lbsr PUTBIT     rewrite/release bitmap
          bcs  SECA85     error; abort
-         lda  S.SASSct,S Minimum allocation sector found?
-         beq  SECA22     ..No; cont
          ldx  PD.DTB,Y
+         lda  S.MapSct,S allocation found so far
          deca
-         sta  V.MapSct,X ..Yes; save it
-SECA22   lda  S.MapSct,S bitmap sector number
-         deca            convert to bit offset
+         sta  V.MapSct,X save it and convert to bit offset
          clrb            times 8 bits/byte
-         lsla
+         asla
          rolb
-         lsla
+         asla
          rolb
-         lsla
+         asla
          rolb
          stb  PD.SBP,Y   save beginning addr msb
          ora  S.HiPosn,S form mid
@@ -2363,6 +2496,7 @@ SECA85   ldy  S.PDptr,S  (Y)=PD
          coma            abort: return carry set
 SECA90   leas S.x,S      discard temps
          puls PC,U,Y,X   exit
+         
          page
 ***************
 * Subroutine Trim
@@ -2520,9 +2654,6 @@ SECD10   lsra            divide by sectors per bit
          ldb  #E$IBA     error code: Illegal Block Addr
          cmpa DD.MAP,X   reasonable number?
          bhi  SecDErr    ..No; abort
-         cmpa V.MapSct,X below low bitmap sector searched?
-         bcc  SECD15     ..No; continue
-         sta  V.MapSct,X
 SECD15   inca            (B)=Bitmap sector addr
          sta  0,S        save sector num
 SECD20   equ  *          potential deadly loop
@@ -2542,7 +2673,7 @@ SECD20   equ  *          potential deadly loop
          bcc  SECD90     ..return error status
 SecDErr  coma            set carry
 SECD90   puls PC,U,Y,X,A
-
+ 
 ***************
 * Subroutine LockBit
 *   LockOut Bitmap, Read first sector
@@ -2554,7 +2685,8 @@ SECD90   puls PC,U,Y,X,A
 LockBit  lbsr CLRBUF     clear buffer
          bra  LckBit20
 
-LckBit10 os9  F$IOQU     get in I/O queue
+LckBit10 lbsr WakePrc    wake any process waiting on us
+         os9  F$IOQU     get in I/O queue
          bsr  ChkSignl   Interrogate Signal recieved
 LckBit20 bcs  LckBit99   ..exit if error
          ldx  PD.DTB,Y   get drive tbl ptr
@@ -2604,6 +2736,12 @@ RLSBIT   pshs CC         save error status
          cmpa V.BMB,X    this process controlling bitmap?
          bne  RLSBIT99   ..No; exit
          clr  V.BMB,X    Release bitmap
+         ldx  D.Proc 
+         lda  P$IOQN,X   Next waiting process? 
+         beq  RLSBIT99   ..No; skip
+         lbsr WakePrc    wake it up
+         ldx #1          sleep a tick
+         OS9  F$Sleep
 RLSBIT99 puls PC,CC      return
 
          page
@@ -2650,7 +2788,7 @@ CHKSEG   ldd  PD.CP+1,Y  get current posn
          cmpx PD.SSZ+1,Y In this seg?
          bcc  GETSEG     ..No
 CHKSG90  clrb            clear carry
-         rts
+CHKSG99  rts
 
 ***************
 * Subroutine GETSEG
@@ -2662,7 +2800,7 @@ CHKSG90  clrb            clear carry
 
 GETSEG   pshs U          save regs
          bsr  GETFD
-         bcs  GETS30     error; abort
+         bcs  GETS90     error; abort
          clra            clear D
          clrb
          std  PD.SBL,Y   Clear seg beginning logical
@@ -2670,7 +2808,7 @@ GETSEG   pshs U          save regs
          ldu  PD.BUF,Y   get buffer addr
          leax FD.SEG,U   get seg list ptr
          lda  PD.BUF,Y   make limit ptr at
-         ldb  #-(FDSL.S-1) end-(entry size-1)
+         ldb  #0-FDSL.S+1 end-(entry size-1)
          pshs D          save limit ptr
 FNDS10   ldd  FDSL.B,X   get seg size
          beq  GETS10     bra if end of used entries
@@ -2702,7 +2840,7 @@ GETS25   ldd  FDSL.A,X   get seg beginning
          ldd  FDSL.B,X   get seg size
          std  PD.SSZ+1,Y
 GETS30   leas 2,S        return scratch
-         puls PC,U
+GETS90   puls PC,U
          page
 ***************
 * Subroutine GETDD
@@ -2726,7 +2864,7 @@ GETFD    ldb  PD.SMF,Y   get flag
          bitb #FDBUF     FD in buffer
          bne  CHKSG90    ..Yes; return (carry clear) ..Yes
          lbsr CLRBUF     clear buffer
-         bcs  PUTS99     error; abort
+         bcs  CHKSG99    error; abort
          ldb  PD.SMF,Y   get flags
          orb  #FDBUF     Mark FD in buffer
          stb  PD.SMF,Y
@@ -2753,10 +2891,23 @@ DEVDIS   pshs U,Y,X,D    save regs
          ora  #InDriver  indicate I/O "in progress"
          sta  PD.SMF,Y
 
+         ldx  D.Proc
+         lda  P$Prior,X
+         tfr  A,B
+         addb #3         bump up priority a little
+         bcc  DEVD05
+         ldb  #255       cap at 255
+DEVD05   stb  P$Prior,X
+         stb  P$Age,X    run immediately
+         
+         ldx  PD.Exten,Y switch to PE
+         sta PE.Prior,X  save priority
+
          ldu  PD.DEV,Y   get device tbl entry
          ldu  V$STAT,U   get device static storage
          bra  DEVD20
-DEVD10   os9  F$IOQU     Wait for device
+DEVD10   lbsr WakePrc    wake waiting process
+         os9  F$IOQU     Wait for device
 DEVD20   lda  V.BUSY,U   Device busy?
          bne  DEVD10     ..Yes
          lda  PD.CPR,Y   get process ID
@@ -2769,15 +2920,33 @@ DEVD20   lda  V.BUSY,U   Device busy?
 
          ldy  4,S        restore PD ptr
          pshs cc         save error status
-         lda  PD.SMF,Y
+         bcc  DEVD21     bra if no error
+         stb  1+1,S      return error code
+DEVD21   lda  PD.SMF,Y
          anda #^InDriver signal I/O finished
          sta  PD.SMF,Y
 
          clr  V.BUSY,U   Clear busy flag
-         puls cc         restore error status
-         bcc  DEVD30     bra if no error
-         stb  1,S        return error code
-DEVD30   puls PC,U,Y,X,D
+
+         ldx  PD.Exten,Y switch to PE 
+         lda  PE.Prior,X recover oriignal priority
+         ldx  D.Proc
+         sta  P$Prior,X  restore priority
+         lda  P$IOQN,X   Waiting process?
+         beq  DEVD30     ..No; skip
+         lda  PD.MOD,Y
+         bita #Exec.    Is the file executable?
+         bne  DEVD30     ..Yes; skip
+         ldx  PD.DTB,Y   get drive tbl ptr
+         lda  PD.CPR,Y   check current process
+         cmpa V.BMB,X    this process controlling bitmap?
+         beq  DEVD30     ..Yes; skip
+
+         lbsr WakePrc    Wake waiting process
+         ldx  #1         Sleep a tick
+         OS9  F$Sleep
+
+DEVD30   puls PC,U,Y,X,D,CC
 
 GODRIV   pshs PC,X,D     save regs
          ldx  PD.DEV,Y   get device driver addr
@@ -2815,7 +2984,7 @@ PUTSEC   lda  #D$WRIT    get entry offset
          ldx  PD.DTB,Y   get drive tbl ptr
          cmpd DD.DSK,X   same disk?
 PUTS10   puls X,D        restore regs
-         beq  DEVDIS     ..Yes; execute Write
+         lbeq DEVDIS     ..Yes; execute Write
          comb            set Carry
          ldb  #E$DIDC    Err: disk ID change
 PUTS99   rts
@@ -2842,7 +3011,7 @@ GETCP    ldd  PD.CP+1,Y  get current posn
 CLRBUF   clrb            clear Carry
          pshs U,X        save regs
          ldb  PD.SMF,Y   get flags
-         andb #SINBUF+FDBUF Sector in buffer?
+         andb #BufBusy+SINBUF+FDBUF Sector in buffer?
          beq  CLRB10     ..No
          tfr  b,a        Copy flag
          eorb PD.SMF,Y   Clear sector in buffer
@@ -2885,13 +3054,15 @@ GCPS10   ldx  PD.Exten,X Point X at testing PE
          cmpb PD.CP,X    Match sector addr byte 0
          bne  GCPS10     No .. Try next path
          lda  PD.SMF,X
+         bita #SINBUF    Sector already in buffer?
+         beq  GCPS10     No .. Try next path 
          bita #InDriver  Other path doing I/O on this sector?
          bne  GCPS15     Yes, wait for it to finish
-         bita #SINBUF    Is sector in buffer?
-         beq  GCPS10     ..No; try next path
-         bra  GCPS20     ..Yes, go copy it
+         bita #BufBusy   Is buffer busy?
+         beq  GCPS20     ..No; continue
 GCPS15   lda  PD.CPR,X   get other path's owner ID
          ldy  PE.PDptr,Y
+         lbsr WakePrc    wake waiting process
          os9  F$IOQu     Wait for I/O to finish
          lbsr ChkSignl   Interrogate signal recieved
          bcc  GCPS05
@@ -2903,6 +3074,7 @@ GCPS20   ldy  PE.PDptr,Y Move to PD
          std  PD.Buf,Y
          stu  PD.Buf,X
          lda  PD.SMF,X   Get state Flags
+         ora  #BufBusy   buffer is busy
          sta  PD.SMF,Y   from holding PD
          clr  PD.SMF,X
          puls PC,U,X
@@ -2912,7 +3084,7 @@ GCPS90   ldy  PE.PDptr,Y Restore registers
          lbsr GETSEC     get sector off of disk
          bcs  RDCPXX     error; abort
          lda  PD.SMF,Y
-         ora  #SINBUF    Set sector in buffer
+         ora  #BufBusy+SINBUF    Set sector in buffer
          sta  PD.SMF,Y
 RDCPXX   puls PC,U,X
 
